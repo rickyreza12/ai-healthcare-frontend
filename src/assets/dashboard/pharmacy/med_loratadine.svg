@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 72" role="img" aria-label="Loratadine package">
+  <rect x="14" y="14" width="48" height="46" rx="4" fill="#ffffff" stroke="#247862" stroke-width="2.5"/>
+  <rect x="14" y="14" width="48" height="13" rx="4" fill="#E4F5EC"/>
+  <rect x="14" y="23" width="48" height="4" fill="#E4F5EC"/>
+  <circle cx="38" cy="45" r="10" fill="#E4F5EC" stroke="#247862" stroke-width="2.5"/>
+  <path d="M38 40.5v9M33.5 45h9" stroke="#247862" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

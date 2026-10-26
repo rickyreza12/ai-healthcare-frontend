@@ -1,0 +1,596 @@
+/* Healthcare Assistant demo. Reuses --dashboard-* tokens from dashboard.css. */
+
+.ha-page {
+  --ha-blue: #2563d9;
+  --ha-blue-soft: #e8f0fd;
+  --ha-teal-soft: #e6f6f2;
+  --ha-tile: #f1f6fc;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--dashboard-body);
+}
+
+.ha-page button:focus-visible,
+.ha-page input:focus-visible,
+.ha-exchange:focus-visible {
+  outline: 2px solid var(--dashboard-teal-dark);
+  outline-offset: 2px;
+}
+
+.ha-page h1,
+.ha-page h2,
+.ha-page h3,
+.ha-page h4,
+.ha-page p,
+.ha-page ul,
+.ha-page ol,
+.ha-page dl {
+  margin: 0;
+}
+
+.ha-page ul,
+.ha-page ol {
+  padding: 0;
+  list-style: none;
+}
+
+:where(.ha-page) button { font: inherit; cursor: pointer; }
+
+.ha-card {
+  background: var(--dashboard-surface);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-panel);
+  padding: 14px 16px;
+}
+
+.ha-muted { color: var(--dashboard-muted); }
+.ha-small { font-size: 12px; }
+
+.ha-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ha-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--dashboard-navy);
+}
+
+.ha-subtitle { font-size: 13px; font-weight: 800; color: var(--dashboard-navy); margin-bottom: 8px !important; }
+
+.ha-link {
+  min-height: 44px;
+  margin: -12px 0;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ha-blue);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ha-spark { width: 28px; height: 28px; flex-shrink: 0; fill: var(--dashboard-teal); }
+
+.ha-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: var(--ha-teal-soft);
+  color: var(--dashboard-teal-dark);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ha-icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--ha-tile);
+}
+
+.ha-tone--teal { background: var(--ha-teal-soft); }
+.ha-tone--blue { background: var(--ha-blue-soft); }
+
+.ha-avatar,
+.ha-patient-portrait { border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+
+/* -- Hero ------------------------------------------------------------------ */
+
+.ha-hero {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  padding: 20px 22px;
+  overflow: hidden;
+}
+
+.ha-page--landing .ha-hero {
+  min-height: 134px;
+  padding-right: 260px;
+  background: linear-gradient(90deg, #fff 55%, #eaf4fb 100%);
+}
+
+.ha-hero-spark { flex-shrink: 0; }
+
+.ha-hero-text { flex: 1 1 320px; min-width: 0; }
+
+.ha-hero h1 { font-size: 30px; font-weight: 800; color: var(--dashboard-navy); letter-spacing: -0.01em; }
+
+.ha-hero-text p { margin-top: 8px !important; max-width: 560px; font-size: 13.5px; line-height: 1.5; color: var(--dashboard-body); }
+
+.ha-hero-art {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 246px;
+  height: 137px;
+  object-fit: cover;
+}
+
+.ha-patient {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-control);
+}
+
+.ha-patient h2 { font-size: 18px; font-weight: 800; color: var(--dashboard-navy); }
+.ha-patient p { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--dashboard-muted); }
+
+.ha-status {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--ha-teal-soft);
+  color: var(--dashboard-success);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ha-secondary {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-control);
+  background: var(--dashboard-surface);
+  color: var(--ha-blue);
+  font-weight: 700;
+}
+
+/* -- Mode switch ------------------------------------------------------------ */
+
+.ha-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  flex-basis: 100%;
+}
+
+.ha-mode {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  padding: 12px 20px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-control);
+  background: var(--dashboard-surface);
+  text-align: left;
+}
+
+.ha-mode .ha-icon-tile { width: 56px; height: 48px; }
+
+.ha-mode--active { border: 2px solid #2bbf9a; background: #f3fbf8; padding: 11px 19px; }
+
+.ha-mode-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ha-mode-label { font-size: 16px; font-weight: 700; color: var(--dashboard-navy); }
+.ha-mode--active .ha-mode-label { color: var(--dashboard-teal-dark); }
+.ha-mode-desc { font-size: 12.5px; color: var(--dashboard-muted); }
+
+/* -- Layouts ---------------------------------------------------------------- */
+
+.ha-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 12px;
+  align-items: start;
+}
+
+.ha-layout--conversation { grid-template-columns: minmax(0, 1fr) 400px; }
+
+/* Landing: hero joins the main column so the source rail runs from the top, as in the reference. */
+.ha-page--landing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  column-gap: 14px;
+  row-gap: 12px;
+  align-items: start;
+}
+
+.ha-page--landing > .ha-hero { grid-column: 1; grid-row: 1; }
+.ha-page--landing > .ha-layout { display: contents; }
+.ha-page--landing .ha-main { grid-column: 1; grid-row: 2; }
+.ha-page--landing .ha-side { grid-column: 2; grid-row: 1 / span 2; }
+
+.ha-main,
+.ha-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* -- Landing ---------------------------------------------------------------- */
+
+.ha-topics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+
+.ha-topic {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ha-tile);
+  text-align: left;
+}
+
+.ha-round-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: #dfe9fa;
+}
+
+.ha-topic:nth-child(n) .ha-round-icon { background: #dfe9fa; }
+.ha-topics li:nth-child(3) .ha-round-icon { background: #fde3e5; }
+.ha-topics li:nth-child(4) .ha-round-icon { background: #dcf3ea; }
+
+.ha-topic-title { font-size: 14px; font-weight: 700; color: #0f4c81; }
+.ha-topic-example { font-size: 12.5px; line-height: 1.4; color: var(--dashboard-muted); }
+
+.ha-welcome { display: flex; gap: 14px; margin-bottom: 14px; }
+
+.ha-welcome-spark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ha-teal-soft);
+}
+
+.ha-welcome-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 520px;
+  padding: 12px 14px 8px;
+  border-radius: 12px;
+  background: var(--ha-tile);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--dashboard-navy);
+}
+
+.ha-time { align-self: flex-end; font-size: 11px; color: var(--dashboard-muted); }
+
+.ha-suggestions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin-bottom: 12px; }
+
+.ha-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 8px;
+  background: var(--dashboard-surface);
+  color: var(--dashboard-navy);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.ha-arrow-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--ha-tile);
+}
+
+.ha-suggestion-label { flex: 1; min-width: 0; }
+
+.ha-knowledge,
+.ha-recent { display: flex; flex-direction: column; gap: 8px; }
+
+.ha-knowledge li {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.ha-knowledge-icon { grid-row: 1 / span 2; width: 40px; height: 40px; }
+.ha-knowledge li:nth-child(2) .ha-knowledge-icon { background: #e1f5ec; }
+.ha-knowledge li:nth-child(4) .ha-knowledge-icon { background: #e1f5ec; }
+.ha-knowledge li:nth-child(5) .ha-knowledge-icon { background: #ece7fb; }
+.ha-knowledge-title { grid-column: 2; font-size: 13.5px; font-weight: 700; color: #0f4c81; }
+.ha-knowledge .ha-muted { grid-column: 2; }
+.ha-count { grid-column: 3; grid-row: 1 / span 2; font-size: 12px; color: var(--dashboard-muted); }
+
+.ha-head-chat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #12a37c;
+}
+
+.ha-head-chat svg path { stroke: #fff; }
+
+.ha-recent-item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto 16px;
+  align-items: center;
+  gap: 4px 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 10px;
+  background: var(--dashboard-surface);
+  text-align: left;
+}
+
+.ha-recent-icon { grid-row: 1 / span 2; }
+.ha-recent-title { grid-column: 2 / 4; font-size: 12.5px; font-weight: 600; color: var(--dashboard-navy); }
+.ha-recent-item .ha-tag { grid-column: 2; justify-self: start; }
+.ha-recent-time { grid-column: 3; font-size: 11.5px; color: var(--dashboard-muted); }
+.ha-recent-chevron { grid-column: 4; grid-row: 1 / span 2; }
+
+.ha-grounding { display: flex; gap: 14px; align-items: flex-start; background: #eaf7f2; border-color: #d4efe5; }
+.ha-grounding svg { flex-shrink: 0; }
+.ha-grounding h2 { font-size: 14px; font-weight: 700; color: #0f4c81; margin-bottom: 6px !important; }
+.ha-grounding p { font-size: 12px; line-height: 1.5; color: var(--dashboard-muted); }
+
+/* -- Composer --------------------------------------------------------------- */
+
+.ha-composer { display: grid; grid-template-columns: 44px 1fr 48px; gap: 10px; align-items: center; margin-top: 4px; }
+
+.ha-attach,
+.ha-composer input {
+  min-height: 44px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 8px;
+  background: var(--dashboard-surface);
+}
+
+.ha-attach { display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+
+.ha-composer input { padding: 0 14px; font: inherit; font-size: 13.5px; color: var(--dashboard-body); }
+
+.ha-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: #12a37c;
+}
+
+.ha-composer-note {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dashboard-muted);
+  text-align: center;
+}
+
+.ha-composer-note svg { flex-shrink: 0; }
+
+/* -- Conversation ----------------------------------------------------------- */
+
+.ha-conversation { display: flex; flex-direction: column; gap: 12px; }
+
+.ha-exchanges { display: flex; flex-direction: column; gap: 16px; }
+
+.ha-exchange { display: flex; flex-direction: column; gap: 10px; border-radius: var(--dashboard-radius-control); }
+
+.ha-question-row { display: flex; justify-content: flex-end; align-items: flex-start; gap: 10px; }
+
+.ha-question {
+  max-width: 70%;
+  padding: 10px 14px;
+  border-radius: var(--dashboard-radius-control);
+  background: #e6f2fd;
+  color: var(--dashboard-navy);
+  font-size: 14px;
+}
+
+.ha-answer { display: flex; gap: 12px; }
+
+.ha-answer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid transparent;
+  border-radius: var(--dashboard-radius-control);
+  background: #eaf6f4 url('../../assets/dashboard/healthcare-assistant/assistant_answer_bg.png') center / cover no-repeat;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ha-exchange--selected .ha-answer-body { border-color: var(--dashboard-teal); }
+
+.ha-keypoints,
+.ha-soap,
+.ha-excerpts { padding: 12px; border-radius: 10px; background: var(--dashboard-surface); }
+
+.ha-keypoints h4 { font-size: 15px; font-weight: 800; color: var(--dashboard-navy); margin-bottom: 4px !important; }
+.ha-keypoints ul { list-style: disc; padding-left: 20px; font-size: 13px; }
+
+.ha-soap { display: flex; flex-direction: column; gap: 6px; }
+.ha-soap-row { display: grid; grid-template-columns: 170px 1fr; gap: 12px; align-items: center; font-size: 13px; }
+.ha-soap-row dt { display: flex; align-items: center; gap: 8px; font-weight: 800; color: var(--dashboard-navy); }
+.ha-soap-row dd { margin: 0; color: var(--dashboard-muted); }
+
+.ha-soap-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 12px;
+}
+
+.ha-soap-row--s .ha-soap-letter { background: #1f6fd1; }
+.ha-soap-row--o .ha-soap-letter { background: var(--dashboard-teal-dark); }
+.ha-soap-row--a .ha-soap-letter { background: #b06a00; }
+.ha-soap-row--p .ha-soap-letter { background: #7a3fc4; }
+
+.ha-excerpts { display: flex; flex-direction: column; gap: 8px; }
+.ha-excerpts li { display: grid; grid-template-columns: 100px 200px 1fr auto; gap: 10px; align-items: start; font-size: 12px; }
+.ha-excerpt-date,
+.ha-excerpt-title { font-weight: 800; color: var(--dashboard-navy); }
+.ha-excerpt-value { color: var(--dashboard-muted); }
+
+.ha-cites { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.ha-cite {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #d8eefc;
+  color: var(--dashboard-navy);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ha-cite--small { min-width: 44px; }
+
+.ha-prompts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ha-prompts-label { font-size: 13px; font-weight: 800; color: var(--dashboard-navy); }
+
+.ha-chip {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 8px;
+  background: var(--dashboard-surface);
+  color: var(--dashboard-body);
+  font-size: 12px;
+}
+
+/* -- Sources ---------------------------------------------------------------- */
+
+.ha-sources h2 { font-size: 20px; font-weight: 800; color: var(--dashboard-navy); }
+.ha-sources > .ha-muted { margin: 6px 0 12px !important; font-size: 13px; }
+.ha-sources-related { font-size: 15px; font-weight: 800; color: #1f6fd1; margin-bottom: 8px !important; }
+
+.ha-source-list { display: flex; flex-direction: column; gap: 10px; }
+
+.ha-source {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 10px;
+  background: var(--dashboard-surface);
+  text-align: left;
+}
+
+.ha-source-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: #e6f2fd;
+  color: #1f6fd1;
+  font-weight: 800;
+}
+
+.ha-source-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ha-source-title { font-size: 14px; font-weight: 800; color: var(--dashboard-navy); }
+.ha-source-meta { font-size: 11px; color: var(--dashboard-muted); }
+.ha-source-summary { font-size: 12px; font-style: italic; color: var(--dashboard-body); }
+
+.ha-source-detail { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px !important; }
+.ha-source-detail dt { font-size: 12px; font-weight: 700; color: var(--dashboard-muted); }
+.ha-source-detail dd { margin: 0; color: var(--dashboard-navy); }
+
+/* -- Responsive ------------------------------------------------------------- */
+
+@media (max-width: 1180px) {
+  .ha-page--landing { display: flex; }
+  .ha-page--landing > .ha-layout { display: flex; flex-direction: column; }
+  .ha-layout,
+  .ha-layout--conversation { grid-template-columns: minmax(0, 1fr); }
+  .ha-topics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .ha-hero { padding: 16px; }
+  .ha-page--landing .ha-hero { padding-right: 16px; background: var(--dashboard-surface); }
+  .ha-hero h1 { font-size: 24px; }
+  .ha-hero-spark { width: 40px; height: 40px; }
+  .ha-hero-art { display: none; }
+  .ha-modes,
+  .ha-topics,
+  .ha-suggestions { grid-template-columns: minmax(0, 1fr); }
+  .ha-question { max-width: 90%; }
+  .ha-answer .ha-spark { display: none; }
+  .ha-soap-row,
+  .ha-excerpts li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .ha-source { grid-template-columns: 44px minmax(0, 1fr); }
+  .ha-source .ha-tag { grid-column: 2; justify-self: start; }
+  .ha-composer-note { justify-content: flex-start; text-align: left; }
+}

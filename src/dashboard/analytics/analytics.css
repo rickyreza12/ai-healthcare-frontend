@@ -1,0 +1,465 @@
+/* Analytics and reports page. Reuses --dashboard-* tokens from dashboard.css. */
+
+.ana-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ana-page select:focus-visible {
+  outline: 2px solid var(--dashboard-teal-dark);
+  outline-offset: 2px;
+}
+
+/* -- Header ---------------------------------------------------------------- */
+
+.ana-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ana-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--dashboard-navy);
+}
+
+.ana-header p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--dashboard-muted);
+}
+
+.ana-period {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-control);
+  background: var(--dashboard-surface);
+}
+
+.ana-period label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dashboard-muted);
+  white-space: nowrap;
+}
+
+.ana-period select {
+  min-height: 42px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dashboard-body);
+  cursor: pointer;
+}
+
+/* -- KPI cards -------------------------------------------------------------- */
+
+.ana-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ana-metric {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  background: var(--dashboard-surface);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-panel);
+}
+
+.ana-metric-swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--dashboard-radius-control);
+  flex-shrink: 0;
+}
+
+.ana-metric--patients .ana-metric-swatch {
+  background: #e2f5ef;
+}
+
+.ana-metric--appointments .ana-metric-swatch {
+  background: #e4f0fe;
+}
+
+.ana-metric--completed .ana-metric-swatch {
+  background: #efe8fb;
+}
+
+.ana-metric--cancelled .ana-metric-swatch {
+  background: #fef1dc;
+}
+
+.ana-metric-value {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--dashboard-navy);
+}
+
+.ana-metric-label {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--dashboard-muted);
+}
+
+.ana-trend {
+  flex-basis: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ana-trend--up {
+  color: var(--dashboard-success);
+}
+
+.ana-trend--down {
+  color: #8a5a08;
+}
+
+/* -- Panels ----------------------------------------------------------------- */
+
+.ana-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.ana-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  background: var(--dashboard-surface);
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-panel);
+}
+
+.ana-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ana-panel-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--dashboard-navy);
+}
+
+.ana-period-pill {
+  padding: 6px 12px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: var(--dashboard-radius-control);
+  background: var(--dashboard-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dashboard-muted);
+  white-space: nowrap;
+}
+
+/* -- Charts ----------------------------------------------------------------- */
+
+.ana-chart {
+  margin: 0;
+}
+
+.ana-bar-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.ana-grid-line {
+  stroke: var(--dashboard-grid);
+  stroke-width: 1;
+}
+
+.ana-axis-label {
+  font-size: 12px;
+  fill: var(--dashboard-muted);
+  font-family: inherit;
+}
+
+.ana-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--dashboard-body);
+}
+
+.ana-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ana-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.ana-chart-note {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--dashboard-muted);
+  text-align: center;
+}
+
+/* The chart figure keeps the table for assistive tech only; the
+   ChartBoundary fallback renders the same table visibly on failure. */
+.ana-chart .ana-data-table {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+}
+
+.ana-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.ana-data-table th,
+.ana-data-table td {
+  padding: 6px 10px;
+  border: 1px solid var(--dashboard-border);
+  text-align: left;
+  color: var(--dashboard-body);
+}
+
+.ana-donut-figure {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+}
+
+.ana-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+}
+
+.ana-donut {
+  width: 200px;
+  max-width: min(100%, 200px);
+  height: auto;
+  flex-shrink: 0;
+}
+
+.ana-donut-total {
+  font-size: 26px;
+  font-weight: 800;
+  fill: var(--dashboard-navy);
+  font-family: inherit;
+}
+
+.ana-donut-caption {
+  font-size: 13px;
+  fill: var(--dashboard-muted);
+  font-family: inherit;
+}
+
+.ana-donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 1 1 auto;
+  font-size: 13.5px;
+}
+
+.ana-donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ana-donut-legend .ana-swatch {
+  border-radius: 50%;
+}
+
+.ana-donut-label {
+  flex: 1 1 auto;
+  color: var(--dashboard-body);
+}
+
+.ana-donut-percent {
+  font-weight: 700;
+  color: var(--dashboard-navy);
+}
+
+/* -- Departments and summary ------------------------------------------------- */
+
+.ana-departments {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0;
+  padding: 6px 0 0;
+  list-style: none;
+}
+
+.ana-dept {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) 56px 60px;
+  align-items: center;
+  gap: 14px;
+}
+
+.ana-dept-label {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--dashboard-navy);
+}
+
+.ana-dept-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--dashboard-soft);
+  border: 1px solid var(--dashboard-border);
+  overflow: hidden;
+}
+
+.ana-dept-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.ana-dept-count {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--dashboard-navy);
+  text-align: right;
+}
+
+.ana-dept-share {
+  font-size: 13px;
+  color: var(--dashboard-muted);
+  text-align: right;
+}
+
+.ana-summary {
+  margin: 0;
+  padding: 0;
+}
+
+.ana-summary > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--dashboard-border);
+}
+
+.ana-summary > div:first-child {
+  padding-top: 4px;
+}
+
+.ana-summary > div:last-child {
+  border-bottom: 0;
+}
+
+.ana-summary dt {
+  font-size: 13.5px;
+  color: var(--dashboard-muted);
+}
+
+.ana-summary dd {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--dashboard-navy);
+  text-align: right;
+}
+
+/* -- Tablet ----------------------------------------------------------------- */
+
+@media (max-width: 1100px) {
+  .ana-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ana-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* -- Mobile ----------------------------------------------------------------- */
+
+@media (max-width: 767px) {
+  .ana-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ana-donut-wrap {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ana-dept {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "label count share"
+      "track track track";
+    gap: 8px 12px;
+  }
+
+  .ana-dept-label {
+    grid-area: label;
+  }
+
+  .ana-dept-track {
+    grid-area: track;
+  }
+
+  .ana-dept-count {
+    grid-area: count;
+  }
+
+  .ana-dept-share {
+    grid-area: share;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ana-page * {
+    transition: none !important;
+  }
+}

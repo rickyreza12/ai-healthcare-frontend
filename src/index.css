@@ -1,0 +1,471 @@
+:root {
+  --navy: #123858;
+  --muted: #566c8a;
+  --placeholder: #5f7389;
+  --border: #8798ae;
+  --teal: #00a38f;
+  --teal-dark: #007a6b;
+  --error: #b42318;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--navy);
+  line-height: 1.4;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.login {
+  position: relative;
+  min-height: 100dvh;
+  background-color: #eaf2f6;
+  background-size: cover;
+  background-position: center;
+  background-attachment: scroll;
+  overflow-x: clip;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(48px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.stage {
+  position: relative;
+  width: min(100%, 1487px);
+  margin-inline: auto;
+}
+
+.scene {
+  display: none;
+  pointer-events: none;
+  user-select: none;
+}
+
+.scene img {
+  display: block;
+}
+
+.boot {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  color: var(--muted);
+}
+
+.panel {
+  position: relative;
+  width: min(100%, 588px);
+  margin-inline: auto;
+  padding: clamp(24px, 5vw, 44px) clamp(20px, 6vw, 61px);
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 32px;
+  box-shadow: 0 18px 50px rgba(18, 56, 88, 0.14);
+  text-align: center;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+.brand-icon {
+  width: 38px;
+  height: 38px;
+  flex: none;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.brand-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--navy);
+  letter-spacing: 0.02em;
+}
+
+.brand-sub {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--teal);
+}
+
+.tagline {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: clamp(26px, 3.5vw, 30px);
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.lede {
+  margin: 0 0 24px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+form {
+  text-align: left;
+}
+
+.field {
+  margin-bottom: 12px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.control {
+  position: relative;
+}
+
+.control input {
+  width: 100%;
+  height: 52px;
+  padding: 0 52px 0 46px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--navy);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.control input::placeholder {
+  color: var(--placeholder);
+}
+
+.control input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.lead {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.eye {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.eye svg {
+  width: 22px;
+  height: 22px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--teal-dark);
+  outline-offset: 2px;
+}
+
+.control input:focus-visible {
+  outline: none;
+  border-color: var(--teal-dark);
+  box-shadow: 0 0 0 3px rgba(0, 122, 107, 0.3);
+}
+
+.error {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--error);
+  overflow-wrap: anywhere;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 16px;
+  margin-bottom: 16px;
+}
+
+.remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.remember input {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  flex: none;
+  background: #fff center / 14px no-repeat;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out;
+}
+
+.remember input:checked {
+  background-color: var(--teal);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E");
+  border-color: var(--teal);
+}
+
+.link,
+.off {
+  font-size: 14px;
+}
+
+.off {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.row .off {
+  font-weight: 600;
+}
+
+.legal .off {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.feedback {
+  min-height: 0;
+  margin-bottom: 4px;
+  font-size: 15px;
+  color: var(--error);
+  opacity: 0;
+}
+
+.feedback:empty {
+  display: none;
+}
+
+.primary,
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  font: inherit;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: filter 120ms ease-out, background-color 120ms ease-out, opacity 120ms ease-out;
+}
+
+.primary {
+  height: 52px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(180deg, #00a38f, #007d6e);
+  border: 0;
+}
+
+.primary svg {
+  width: 18px;
+  height: 18px;
+}
+
+.primary:active {
+  filter: brightness(0.92);
+}
+
+.primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.secondary {
+  height: 48px;
+  margin-top: 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--teal-dark);
+  background: #fff;
+  border: 1.5px solid var(--teal);
+}
+
+.secondary:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  background: #f7f9fb;
+  border-color: #c5d1de;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 24px 0 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #cfdae6;
+}
+
+.providers {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.providers button {
+  flex: 1 1 0;
+  max-width: 80px;
+  min-width: 44px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: #fff;
+  border: 1px solid #cfdae6;
+  border-radius: 12px;
+  cursor: not-allowed;
+}
+
+.providers button:disabled {
+  background: #f1f5f9;
+}
+
+.providers button:disabled img {
+  opacity: 0.7;
+}
+
+.providers img {
+  width: 24px;
+  height: 24px;
+}
+
+.legal {
+  margin: 16px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.notice {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .primary:hover {
+    filter: brightness(1.06);
+  }
+  .secondary:not(:disabled):hover,
+  .eye:hover {
+    background: #eef7f6;
+  }
+}
+
+@media (max-width: 479px) {
+  .panel {
+    border-radius: 24px;
+  }
+  .row {
+    row-gap: 0;
+  }
+}
+
+/* Tablet and up: more breathing room outside the panel. */
+@media (min-width: 768px) {
+  .login {
+    padding-top: clamp(24px, 6vh, 64px);
+    padding-inline: 32px;
+  }
+}
+
+/* Wide, tall-enough viewports: panel left, nurse right, as in the reference. */
+@media (min-width: 1180px) and (min-height: 700px) {
+  .login {
+    padding-top: clamp(24px, 8.6vh, 91px);
+    padding-bottom: 16px;
+    padding-inline: 0;
+  }
+  .stage {
+    overflow: visible;
+  }
+  .panel {
+    margin-left: 13.3%;
+    margin-right: 0;
+  }
+  .scene {
+    display: block;
+    position: absolute;
+    right: 0;
+    top: calc(-1 * clamp(0px, 0.5vh, 8px));
+    width: min(45%, calc(86.7% - 604px));
+    max-width: 760px;
+    z-index: 0;
+  }
+  .nurse {
+    position: relative;
+    width: 100%;
+    height: auto;
+    z-index: 1;
+  }
+
+  .panel {
+    z-index: 1;
+  }
+}
+
+/* The nurse extends below the fold; keep it from creating page scroll. */
+@media (min-width: 1180px) and (min-height: 700px) {
+  .login {
+    overflow-y: clip;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": [
+    "src/validate.check.ts",
+    "src/dashboard.check.ts",
+    "src/patientDirectory.check.ts",
+    "src/patientDetail.check.ts",
+    "src/appointmentSchedule.check.ts",
+    "src/medicalRecord.check.ts",
+    "src/pharmacy.check.ts",
+    "src/maternity.check.ts",
+    "src/pediatric.check.ts",
+    "src/clinicalInbox.check.ts",
+    "src/analytics.check.ts",
+    "src/profile.check.ts",
+    "src/healthcareAssistant.check.ts",
+    "src/laboratory.check.ts",
+    "src/menuLock.check.ts",
+    "src/dataInput.check.ts",
+    "src/appointmentInput.check.ts",
+    "src/clinicalAi.check.ts"
+  ]
+}

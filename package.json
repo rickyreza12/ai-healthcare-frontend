@@ -1,0 +1,29 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && node src/validate.check.ts && node src/dashboard.check.ts && node src/patientDirectory.check.ts && node src/patientDetail.check.ts && node src/appointmentSchedule.check.ts && node src/medicalRecord.check.ts && node src/maternity.check.ts && node src/pharmacy.check.ts && node src/pediatric.check.ts && node src/clinicalInbox.check.ts && node src/analytics.check.ts && node src/profile.check.ts && node src/healthcareAssistant.check.ts && node src/laboratory.check.ts && node src/menuLock.check.ts && node src/dataInput.check.ts && node src/appointmentInput.check.ts && node src/clinicalAi.check.ts"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "chart.js": "^4.5.1",
+    "gsap": "^3.15.0",
+    "react": "^19.3.1",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4"
+  }
+}
