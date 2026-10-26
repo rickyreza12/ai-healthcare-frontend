@@ -37,6 +37,8 @@
 
 :where(.ha-page) button { font: inherit; cursor: pointer; }
 
+:where(.ha-page) button:disabled { cursor: not-allowed; opacity: 0.55; }
+
 .ha-card {
   background: var(--dashboard-surface);
   border: 1px solid var(--dashboard-border);
@@ -166,6 +168,9 @@
 }
 
 .ha-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 44px;
   padding: 0 16px;
   border: 1px solid var(--dashboard-border);
@@ -173,6 +178,7 @@
   background: var(--dashboard-surface);
   color: var(--ha-blue);
   font-weight: 700;
+  text-decoration: none;
 }
 
 /* -- Mode switch ------------------------------------------------------------ */
@@ -215,6 +221,20 @@
 }
 
 .ha-layout--conversation { grid-template-columns: minmax(0, 1fr) 400px; }
+
+@media (min-width: 1041px) {
+  .ha-page--general .ha-hero {
+    display: grid;
+    grid-template-columns: auto minmax(260px, 1fr) minmax(470px, 0.9fr);
+  }
+
+  .ha-page--general .ha-hero .ha-modes {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
+    flex-basis: auto;
+  }
+}
 
 /* Landing: hero joins the main column so the source rail runs from the top, as in the reference. */
 .ha-page--landing {
@@ -412,6 +432,7 @@
   border: 0;
   border-radius: 8px;
   background: #12a37c;
+  color: #fff;
 }
 
 .ha-composer-note {
@@ -438,6 +459,8 @@
 .ha-question-row { display: flex; justify-content: flex-end; align-items: flex-start; gap: 10px; }
 
 .ha-question {
+  display: flex;
+  flex-direction: column;
   max-width: 70%;
   padding: 10px 14px;
   border-radius: var(--dashboard-radius-control);
@@ -445,6 +468,8 @@
   color: var(--dashboard-navy);
   font-size: 14px;
 }
+
+.ha-question .ha-time { margin-top: 4px; }
 
 .ha-answer { display: flex; gap: 12px; }
 
@@ -569,7 +594,7 @@
 
 /* -- Responsive ------------------------------------------------------------- */
 
-@media (max-width: 1180px) {
+@media (max-width: 1040px) {
   .ha-page--landing { display: flex; }
   .ha-page--landing > .ha-layout { display: flex; flex-direction: column; }
   .ha-layout,
