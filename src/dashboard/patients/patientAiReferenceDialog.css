@@ -1,0 +1,177 @@
+.patient-ai-reference-trigger {
+  position: fixed;
+  z-index: 20;
+  top: 50%;
+  right: 20px;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  padding: 0;
+  color: #ffffff;
+  background: #007f6d;
+  border: 1px solid #006f5f;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgb(0 62 72 / 18%);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.patient-ai-reference-trigger:hover {
+  background: #006f5f;
+}
+
+.patient-ai-reference-trigger:focus-visible,
+.patient-ai-reference-close:focus-visible,
+.patient-ai-reference-tab:focus-visible {
+  outline: 3px solid #ffbf47;
+  outline-offset: 3px;
+}
+
+.patient-ai-reference-trigger span {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.patient-ai-reference-dialog {
+  width: min(1180px, calc(100vw - 40px));
+  max-width: none;
+  height: min(860px, calc(100dvh - 40px));
+  max-height: none;
+  padding: 0;
+  color: #082e54;
+  background: #ffffff;
+  border: 1px solid #b9d6e5;
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgb(4 38 66 / 28%);
+}
+
+.patient-ai-reference-dialog::backdrop {
+  background: rgb(4 28 48 / 72%);
+}
+
+.patient-ai-reference-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.patient-ai-reference-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid #d7e7ef;
+}
+
+.patient-ai-reference-header h2,
+.patient-ai-reference-header p {
+  margin: 0;
+}
+
+.patient-ai-reference-header h2 {
+  font-size: 20px;
+}
+
+.patient-ai-reference-header p {
+  margin-top: 3px;
+  color: #48677f;
+  font-size: 13px;
+}
+
+.patient-ai-reference-close {
+  display: grid;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  color: #082e54;
+  background: #ffffff;
+  border: 1px solid #b9d6e5;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.patient-ai-reference-close span[aria-hidden='true'] {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.patient-ai-reference-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 20px;
+  overflow-x: auto;
+  border-bottom: 1px solid #d7e7ef;
+}
+
+.patient-ai-reference-tab {
+  min-height: 44px;
+  padding: 0 14px;
+  color: #294e6c;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.patient-ai-reference-tab:hover {
+  background: #edf7f6;
+}
+
+.patient-ai-reference-tab--active {
+  color: #006f5f;
+  background: #def4ec;
+  border-color: #a9dfcf;
+}
+
+.patient-ai-reference-canvas {
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+  background: #e9f3f8;
+}
+
+.patient-ai-reference-canvas img {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 760px;
+  background: #f2f9fd;
+  box-shadow: 0 4px 18px rgb(4 38 66 / 16%);
+}
+
+@media (max-width: 700px) {
+  .patient-ai-reference-trigger {
+    top: auto;
+    right: 14px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    transform: none;
+  }
+
+  .patient-ai-reference-dialog {
+    width: calc(100vw - 20px);
+    height: calc(100dvh - 20px);
+    border-radius: 12px;
+  }
+
+  .patient-ai-reference-header {
+    padding: 14px;
+  }
+
+  .patient-ai-reference-tabs {
+    padding: 8px 14px;
+  }
+
+  .patient-ai-reference-canvas {
+    padding: 10px;
+  }
+}

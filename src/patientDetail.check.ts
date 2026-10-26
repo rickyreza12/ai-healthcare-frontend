@@ -278,4 +278,13 @@ assert.ok(!pageSource.includes('The reference reports no integrated laboratory d
 assert.ok(pageSource.includes('patientVisitHistory'), 'the appointments panel renders supplied visit history')
 assert.ok(!pageSource.includes('No historical appointments are included'), 'the reference-patient visit-history empty state is gone')
 
+const routeSource = readFileSync(new URL('./dashboard/patients/PatientDetailRoute.tsx', import.meta.url), 'utf8')
+assert.ok(routeSource.includes('<PatientDetailPage />'), 'patient routes keep the existing patient detail display')
+assert.ok(!routeSource.includes('PatientAiSummaryPage'), 'the standalone AI summary replacement is not routed')
+
+const referenceSource = readFileSync(new URL('./dashboard/patients/PatientAiReferenceDialog.tsx', import.meta.url), 'utf8')
+for (const asset of ['patient-ai-summary.svg', 'patient-sources-evidence.svg', 'patient-data-quality.svg']) {
+  assert.ok(referenceSource.includes(asset), `${asset} is available in the AI reference modal`)
+}
+
 console.log('patient detail checks passed')

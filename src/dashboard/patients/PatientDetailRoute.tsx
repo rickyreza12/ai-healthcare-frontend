@@ -1,8 +1,15 @@
 import { useSearchParams } from 'react-router-dom'
-import { PatientAiSummaryPage } from '../../features/clinicalAi/presentation/patient-summary/PatientAiSummaryPage.tsx'
+import { PatientAiReferenceDialog } from './PatientAiReferenceDialog.tsx'
 import { PatientDetailPage } from './PatientDetailPage.tsx'
 
 export function PatientDetailRoute() {
   const [params] = useSearchParams()
-  return params.get('tab') === 'ai-summary' ? <PatientAiSummaryPage /> : <PatientDetailPage />
+  const showsAiSummary = params.get('tab') === 'ai-summary'
+
+  return (
+    <>
+      <PatientDetailPage />
+      {showsAiSummary && <PatientAiReferenceDialog section={params.get('section')} />}
+    </>
+  )
 }
