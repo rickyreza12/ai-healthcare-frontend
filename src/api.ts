@@ -8,25 +8,46 @@ export type MenuConfig = {
   default_key: string
 }
 
-export type DoctorRef = { displayName: string; specialty: string }
+export type DoctorRef = { id: string; displayName: string; specialty: string; avatarUrl?: string | null }
+
+export type PatientStatus = 'inpatient' | 'outpatient' | 'emergency' | 'follow_up'
 
 export type Patient = {
   patientId: string
+  patientNumber: string
   displayName: string
+  dateOfBirth: string
   age: number
   gender: string
-  room: string
-  unit: string
-  lastVisit: string
-  status: string
+  room: string | null
+  unit: string | null
+  lastVisit: string | null
+  status: PatientStatus
+  avatarUrl?: string | null
   doctor: DoctorRef
 }
 
+export type EmergencyContact = { name: string; relationship: string; phone: string }
+
 export type PatientDetail = Patient & {
-  patientNumber: string | null
-  createdAt: string
-  updatedAt: string
-  version: number
+  religion: string | null
+  phone: string | null
+  address: string | null
+  emergencyContact: EmergencyContact | null
+  overview: {
+    condition: {
+      title: string
+      description: string
+      lastVisitReason: string
+      lastVisitAt: string
+      careContext: string
+      careContextNote: string
+    }
+    vitals: { label: string; value: string; unit: string; status: string; measuredAt: string }[]
+    allergies: { name: string; kind: string; severity: 'high' | 'medium' | 'low' }[]
+    medications: { name: string; dose: string; status: string }[]
+    history: { occurredAt: string; title: string; note: string; clinician: DoctorRef }[]
+  }
 }
 
 export type PatientPage = {
@@ -34,8 +55,8 @@ export type PatientPage = {
   pageSize: number
   total: number
   totalPages: number
-  statusCounts: Record<string, number>
-  filterOptions: { departments: string[]; visitDates: string[] }
+  statusCounts: { all: number; inpatient: number; outpatient: number; emergency: number; follow_up: number }
+  filterOptions: { departments: string[] }
   items: Patient[]
 }
 
@@ -145,10 +166,19 @@ export const api = {
   menu: () => request<MenuConfig>('/api/menu'),
 
   patients: {
-    list: (params: { q?: string; status?: string; page?: number; pageSize?: number } = {}) => {
+    list: (params: {
+      q?: string
+      status?: string
+      department?: string
+      visitDate?: string
+      page?: number
+      pageSize?: number
+    } = {}) => {
       const query = new URLSearchParams()
       if (params.q) query.set('q', params.q)
       if (params.status) query.set('status', params.status)
+      if (params.department) query.set('department', params.department)
+      if (params.visitDate) query.set('visitDate', params.visitDate)
       if (params.page) query.set('page', String(params.page))
       if (params.pageSize) query.set('pageSize', String(params.pageSize))
       const suffix = query.size ? `?${query.toString()}` : ''

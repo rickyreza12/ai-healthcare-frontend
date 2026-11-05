@@ -78,7 +78,6 @@ export function ServerPatientRecordPage() {
               <div><dt>Last visit</dt><dd>{patient.lastVisit}</dd></div>
               <div><dt>Status</dt><dd>{patient.status}</dd></div>
               <div><dt>Doctor</dt><dd>{patient.doctor.displayName} ({patient.doctor.specialty})</dd></div>
-              <div><dt>Version</dt><dd>{patient.version}</dd></div>
             </dl>
           </section>
         </>

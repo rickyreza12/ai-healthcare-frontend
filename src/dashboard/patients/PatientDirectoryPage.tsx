@@ -1,32 +1,30 @@
-import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { DIRECTORY_AVATARS } from '../dashboardAssets.ts'
+import { api, ApiError, type Patient, type PatientPage, type PatientStatus } from '../../api.ts'
 import { slugify } from '../dashboardData.ts'
 import { DirectoryStatusBadge } from '../DashboardPrimitives.tsx'
-import {
-  DIRECTORY_PATIENTS,
-  DIRECTORY_TABS,
-  DIRECTORY_TOTAL,
-  type DirectoryPatient,
-  type DirectoryStatus,
-} from './patientDirectoryData.ts'
-import {
-  ALL_DATES,
-  ALL_DEPARTMENTS,
-  DEFAULT_DIRECTORY_FILTERS,
-  DIRECTORY_PAGE_SIZE,
-  directoryDepartments,
-  directoryPageWindow,
-  directoryVisitDates,
-  filterDirectoryPatients,
-  patientAgeLabel,
-  patientIdLabel,
-  tabStatus,
-  type DirectoryFilters,
-} from './patientDirectoryLogic.ts'
+import { DIRECTORY_TABS, type DirectoryStatus } from './patientDirectoryData.ts'
+import { ALL_DATES, ALL_DEPARTMENTS, ALL_STATUSES, DIRECTORY_PAGE_SIZE, directoryPageWindow, patientAgeLabel, patientIdLabel } from './patientDirectoryLogic.ts'
+import { formatDate } from './patientDetailView.ts'
 
-const DEPARTMENTS = directoryDepartments(DIRECTORY_PATIENTS)
-const VISIT_DATES = directoryVisitDates(DIRECTORY_PATIENTS)
+type DirectoryFilters = {
+  status: PatientStatus | typeof ALL_STATUSES
+  department: string
+  visitDate: string
+}
+
+const DEFAULT_FILTERS: DirectoryFilters = {
+  status: ALL_STATUSES,
+  department: ALL_DEPARTMENTS,
+  visitDate: ALL_DATES,
+}
+
+const STATUS_LABELS: Record<PatientStatus, DirectoryStatus> = {
+  inpatient: 'Inpatient',
+  outpatient: 'Outpatient',
+  emergency: 'Emergency',
+  follow_up: 'Follow-up',
+}
 
 const PLUS_GLYPH = (
   <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true">
@@ -79,21 +77,23 @@ function Chevron({ dir }: { dir: 'prev' | 'next' }) {
   )
 }
 
-function Portrait({ src, size }: { src: string; size: number }) {
-  return (
-    <img
-      src={src}
-      alt=""
-      width={size}
-      height={size}
-      className="db-dir-avatar"
-      style={{ width: size, height: size }}
-    />
-  )
+function initials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('')
 }
 
-function PatientAvatar({ patient, size }: { patient: DirectoryPatient; size: number }) {
-  return <Portrait src={DIRECTORY_AVATARS[patient.avatar]} size={size} />
+function Avatar({ src, name, size }: { src: string | null | undefined; name: string; size: number }) {
+  if (src) {
+    return <img src={src} alt="" width={size} height={size} className="db-dir-avatar" style={{ width: size, height: size }} />
+  }
+  return (
+    <span
+      className="db-dir-avatar db-dir-avatar--initials"
+      style={{ width: size, height: size, fontSize: Math.round(size / 2.6) }}
+      aria-hidden="true"
+    >
+      {initials(name)}
+    </span>
+  )
 }
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -131,30 +131,63 @@ function FilterField({ label, icon, children }: { label: string; icon: ReactNode
 }
 
 function PatientDirectoryPage() {
-  const [filters, setFilters] = useState<DirectoryFilters>(DEFAULT_DIRECTORY_FILTERS)
+  const [filters, setFilters] = useState<DirectoryFilters>(DEFAULT_FILTERS)
   const [selected, setSelected] = useState<readonly string[]>([])
   const [addOpen, setAddOpen] = useState(false)
+  const [page, setPage] = useState(1)
+  const [data, setData] = useState<PatientPage | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [reloadToken, setReloadToken] = useState(0)
   const selectAllRef = useRef<HTMLInputElement>(null)
   const addDialogRef = useRef<HTMLDialogElement>(null)
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null)
-  const [page, setPage] = useState(1)
   const addTitleId = useId()
   const navigate = useNavigate()
 
-  const rows = filterDirectoryPatients(DIRECTORY_PATIENTS, filters)
-  const pageCount = Math.max(1, Math.ceil(rows.length / DIRECTORY_PAGE_SIZE))
-  const currentPage = Math.min(page, pageCount)
-  const pageRows = rows.slice((currentPage - 1) * DIRECTORY_PAGE_SIZE, currentPage * DIRECTORY_PAGE_SIZE)
-  const selectedVisible = pageRows.filter((row) => selected.includes(row.id)).length
-  const allVisibleSelected = pageRows.length > 0 && selectedVisible === pageRows.length
+  useEffect(() => {
+    const abort = new AbortController()
+    setLoading(true)
+    setError('')
+    api.patients.list({
+      status: filters.status === ALL_STATUSES ? undefined : filters.status,
+      department: filters.department === ALL_DEPARTMENTS ? undefined : filters.department,
+      visitDate: filters.visitDate === ALL_DATES ? undefined : filters.visitDate,
+      page,
+      pageSize: DIRECTORY_PAGE_SIZE,
+    }).then((next) => {
+      if (!abort.signal.aborted) { setData(next); setLoading(false) }
+    }).catch((reason) => {
+      if (abort.signal.aborted) return
+      setError(
+        reason instanceof ApiError && reason.status === 401
+          ? 'Your session expired. Sign in again to continue.'
+          : reason instanceof ApiError && reason.status === 403
+            ? 'You do not have permission to view the patient directory.'
+            : reason instanceof Error ? reason.message : 'The patient directory could not be loaded.',
+      )
+      setLoading(false)
+    })
+    return () => abort.abort()
+  }, [filters, page, reloadToken])
+
+  const rows = data?.items ?? []
+  const total = data?.total ?? 0
+  const currentPage = data?.page ?? page
+  const pageCount = Math.max(1, data?.totalPages ?? 1)
+  const selectedVisible = rows.filter(row => selected.includes(row.patientId)).length
+  const allVisibleSelected = rows.length > 0 && selectedVisible === rows.length
+  const hasFilters = filters.status !== ALL_STATUSES
+    || filters.department !== ALL_DEPARTMENTS
+    || filters.visitDate !== ALL_DATES
 
   useEffect(() => {
     if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = selectedVisible > 0 && selectedVisible < pageRows.length
+      selectAllRef.current.indeterminate = selectedVisible > 0 && selectedVisible < rows.length
     }
-  }, [selectedVisible, pageRows.length])
+  }, [selectedVisible, rows.length])
 
   useEffect(() => {
     const dialog = addDialogRef.current
@@ -205,21 +238,18 @@ function PatientDirectoryPage() {
     })
   }
 
-  // Filtering drops hidden rows from the bulk selection so the header state never lies.
   function applyFilters(patch: Partial<DirectoryFilters>) {
-    setFilters((current) => ({ ...current, ...patch }))
+    setFilters(current => ({ ...current, ...patch }))
     setSelected([])
     setPage(1)
   }
 
   function toggleAll() {
-    setSelected(allVisibleSelected ? [] : pageRows.map((row) => row.id))
+    setSelected(allVisibleSelected ? [] : rows.map(row => row.patientId))
   }
 
   function toggleRow(id: string) {
-    setSelected((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
-    )
+    setSelected(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
   }
 
   // The row is a pointer shortcut; controls inside it keep their own behavior and the name link carries keyboard access.
@@ -227,6 +257,9 @@ function PatientDirectoryPage() {
     if ((event.target as HTMLElement).closest('a, button, input, label')) return
     navigate(patientPath(id))
   }
+
+  const reload = useCallback(() => setReloadToken(token => token + 1), [])
+  const visitDates = [...new Set(rows.map(row => row.lastVisit?.slice(0, 10)).filter((value): value is string => Boolean(value)))]
 
   return (
     <div className="db-directory">
@@ -243,17 +276,19 @@ function PatientDirectoryPage() {
 
       <div className="db-directory-tabs" role="group" aria-label="Patient type filters">
         {DIRECTORY_TABS.map((tab) => {
-          const active = filters.status === tabStatus(tab.key)
+          const status = tab.key === 'all' ? ALL_STATUSES : tab.key.toLowerCase().replace('-', '_') as PatientStatus
+          const active = filters.status === status
+          const count = tab.key === 'all' ? data?.statusCounts.all : data?.statusCounts[status as PatientStatus]
           return (
             <button
               key={tab.key}
               type="button"
               className={`db-tab db-tab--${slugify(tab.key)}${active ? ' db-tab--active' : ''}`}
               aria-pressed={active}
-              onClick={() => applyFilters({ status: tabStatus(tab.key) })}
+              onClick={() => applyFilters({ status })}
             >
               <span className="db-tab-label">{tab.label}</span>
-              <span className="db-tab-count">{tab.count.toLocaleString('en-US')}</span>
+              <span className="db-tab-count">{count === undefined ? '—' : count.toLocaleString('en-US')}</span>
             </button>
           )
         })}
@@ -267,7 +302,7 @@ function PatientDirectoryPage() {
             onChange={(event) => applyFilters({ department: event.target.value })}
           >
             <option value={ALL_DEPARTMENTS}>All Departments</option>
-            {DEPARTMENTS.map((department) => (
+            {(data?.filterOptions.departments ?? []).map((department) => (
               <option key={department} value={department}>{department}</option>
             ))}
           </select>
@@ -277,11 +312,11 @@ function PatientDirectoryPage() {
           <select
             className="db-select"
             value={filters.status}
-            onChange={(event) => applyFilters({ status: event.target.value as DirectoryStatus | 'All' })}
+            onChange={(event) => applyFilters({ status: event.target.value as PatientStatus | typeof ALL_STATUSES })}
           >
-            <option value="All">All Status</option>
+            <option value={ALL_STATUSES}>All Status</option>
             {DIRECTORY_TABS.filter((tab) => tab.key !== 'all').map((tab) => (
-              <option key={tab.key} value={tab.key}>{tab.label}</option>
+              <option key={tab.key} value={tab.key.toLowerCase().replace('-', '_')}>{tab.label}</option>
             ))}
           </select>
         </FilterField>
@@ -294,32 +329,54 @@ function PatientDirectoryPage() {
             onChange={(event) => applyFilters({ visitDate: event.target.value })}
           >
             <option value={ALL_DATES}>Select Date Range</option>
-            {VISIT_DATES.map((date) => (
-              <option key={date} value={date}>{date}</option>
+            {(filters.visitDate !== ALL_DATES && !visitDates.includes(filters.visitDate)
+              ? [filters.visitDate, ...visitDates]
+              : visitDates
+            ).map((date) => (
+              <option key={date} value={date}>{formatDate(date)}</option>
             ))}
           </select>
         </FilterField>
 
-        <button type="button" className="db-clear-filters" onClick={() => applyFilters(DEFAULT_DIRECTORY_FILTERS)}>
+        <button type="button" className="db-clear-filters" onClick={() => applyFilters(DEFAULT_FILTERS)}>
           {RESET_GLYPH}
           Clear Filters
         </button>
       </div>
 
-      <section className="db-directory-panel" aria-label="Patient records">
-        {rows.length === 0 ? (
-          <div className="db-directory-empty">
-            <p className="db-directory-empty-title">No patients match these filters.</p>
-            <p className="db-directory-empty-text">
-              None of the {DIRECTORY_TOTAL.toLocaleString('en-US')} directory patients match these filters. Adjust them or
-              clear them to see the full directory.
-            </p>
-            <button type="button" className="db-clear-filters" onClick={() => applyFilters(DEFAULT_DIRECTORY_FILTERS)}>
+      <section className="db-directory-panel" aria-label="Patient records" aria-busy={loading}>
+        {loading && (
+          <p className="db-directory-loading" role="status">Loading patients…</p>
+        )}
+        {!loading && error && (
+          <div className="db-directory-empty" role="alert">
+            <p className="db-directory-empty-title">Patient directory unavailable</p>
+            <p className="db-directory-empty-text">{error}</p>
+            <button type="button" className="db-clear-filters" onClick={reload}>
               {RESET_GLYPH}
-              Clear filters
+              Try again
             </button>
           </div>
-        ) : (
+        )}
+        {!loading && !error && rows.length === 0 && (
+          <div className="db-directory-empty">
+            <p className="db-directory-empty-title">
+              {hasFilters ? 'No patients match these filters.' : 'No patients are recorded yet.'}
+            </p>
+            <p className="db-directory-empty-text">
+              {hasFilters
+                ? 'Adjust the filters or clear them to see the full directory.'
+                : 'Registered patients will appear here once the record service stores them.'}
+            </p>
+            {hasFilters && (
+              <button type="button" className="db-clear-filters" onClick={() => applyFilters(DEFAULT_FILTERS)}>
+                {RESET_GLYPH}
+                Clear filters
+              </button>
+            )}
+          </div>
+        )}
+        {!loading && !error && rows.length > 0 && (
           <>
             <div
               className="db-directory-table-wrap"
@@ -358,53 +415,53 @@ function PatientDirectoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map((patient) => (
+                  {rows.map((patient: Patient) => (
                     <tr
-                      key={patient.id}
+                      key={patient.patientId}
                       className="db-directory-row"
-                      data-selected={selected.includes(patient.id) || undefined}
-                      onClick={(event) => openRow(event, patient.id)}
+                      data-selected={selected.includes(patient.patientId) || undefined}
+                      onClick={(event) => openRow(event, patient.patientId)}
                     >
                       <td className="db-col-select">
                         <label className="db-check">
                           <input
                             type="checkbox"
-                            checked={selected.includes(patient.id)}
-                            onChange={() => toggleRow(patient.id)}
-                            aria-label={`Select ${patient.name}`}
+                            checked={selected.includes(patient.patientId)}
+                            onChange={() => toggleRow(patient.patientId)}
+                            aria-label={`Select ${patient.displayName}`}
                           />
                         </label>
                       </td>
                       <td>
-                        <Link to={patientPath(patient.id)} className="db-directory-row-link">
-                          <PatientAvatar patient={patient} size={48} />
+                        <Link to={patientPath(patient.patientId)} className="db-directory-row-link">
+                          <Avatar src={patient.avatarUrl} name={patient.displayName} size={48} />
                           <span className="db-cell-stack">
-                            <strong>{patient.name}</strong>
-                            <span>{patientIdLabel(patient.id)}</span>
+                            <strong>{patient.displayName}</strong>
+                            <span>{patientIdLabel(patient.patientId)}</span>
                           </span>
                         </Link>
                       </td>
                       <td><CellStack primary={patientAgeLabel(patient.age)} secondary={patient.gender} /></td>
-                      <td><CellStack primary={patient.room} secondary={patient.unit} /></td>
-                      <td>{patient.lastVisit}</td>
+                      <td><CellStack primary={patient.room ?? '—'} secondary={patient.unit ?? '—'} /></td>
+                      <td>{formatDate(patient.lastVisit, '—')}</td>
                       <td>
                         <span className="db-directory-identity">
-                          <Portrait src={DIRECTORY_AVATARS[patient.doctorAvatar]} size={48} />
-                          <CellStack primary={patient.doctor} secondary={patient.specialty} />
+                          <Avatar src={patient.doctor.avatarUrl} name={patient.doctor.displayName} size={48} />
+                          <CellStack primary={patient.doctor.displayName} secondary={patient.doctor.specialty} />
                         </span>
                       </td>
-                      <td><DirectoryStatusBadge status={patient.status} /></td>
+                      <td><DirectoryStatusBadge status={STATUS_LABELS[patient.status]} /></td>
                       <td className="db-col-actions">
                         <button
                           type="button"
                           className="db-row-menu-button"
                           aria-haspopup="menu"
-                          aria-expanded={menu?.id === patient.id}
-                          aria-label={`Actions for ${patient.name}`}
+                          aria-expanded={menu?.id === patient.patientId}
+                          aria-label={`Actions for ${patient.displayName}`}
                           onClick={(event) => {
                             event.stopPropagation()
-                            if (menu?.id === patient.id) setMenu(null)
-                            else openMenu(patient.id, event.currentTarget)
+                            if (menu?.id === patient.patientId) setMenu(null)
+                            else openMenu(patient.patientId, event.currentTarget)
                           }}
                         >
                           <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" aria-hidden="true">
@@ -413,18 +470,18 @@ function PatientDirectoryPage() {
                             <circle cx="12" cy="19" r="1.7" />
                           </svg>
                         </button>
-                        {menu?.id === patient.id && (
+                        {menu?.id === patient.patientId && (
                           <div
                             ref={menuRef}
                             role="menu"
-                            aria-label={`Actions for ${patient.name}`}
+                            aria-label={`Actions for ${patient.displayName}`}
                             className="db-row-menu"
                             style={{ top: menu.top, left: menu.left }}
                           >
                             <Link
                               role="menuitem"
                               className="db-row-menu-link"
-                              to={patientPath(patient.id)}
+                              to={patientPath(patient.patientId)}
                               onClick={() => setMenu(null)}
                             >
                               View patient record
@@ -439,34 +496,34 @@ function PatientDirectoryPage() {
             </div>
 
             <ul className="db-directory-cards" role="list">
-              {pageRows.map((patient) => (
-                <li key={patient.id} className="db-directory-card" data-selected={selected.includes(patient.id) || undefined}>
+              {rows.map((patient: Patient) => (
+                <li key={patient.patientId} className="db-directory-card" data-selected={selected.includes(patient.patientId) || undefined}>
                   <div className="db-directory-card-head">
                     <label className="db-check">
                       <input
                         type="checkbox"
-                        checked={selected.includes(patient.id)}
-                        onChange={() => toggleRow(patient.id)}
-                        aria-label={`Select ${patient.name}`}
+                        checked={selected.includes(patient.patientId)}
+                        onChange={() => toggleRow(patient.patientId)}
+                        aria-label={`Select ${patient.displayName}`}
                       />
                     </label>
-                    <PatientAvatar patient={patient} size={44} />
+                    <Avatar src={patient.avatarUrl} name={patient.displayName} size={44} />
                     <span className="db-cell-stack">
-                      <strong>{patient.name}</strong>
-                      <span>{patientIdLabel(patient.id)}</span>
+                      <strong>{patient.displayName}</strong>
+                      <span>{patientIdLabel(patient.patientId)}</span>
                     </span>
-                    <DirectoryStatusBadge status={patient.status} />
+                    <DirectoryStatusBadge status={STATUS_LABELS[patient.status]} />
                   </div>
                   <dl className="db-directory-card-facts">
                     <Fact label="Age" value={`${patientAgeLabel(patient.age)} · ${patient.gender}`} />
-                    <Fact label="Room" value={`${patient.room} · ${patient.unit}`} />
-                    <Fact label="Last visit" value={patient.lastVisit} />
-                    <Fact label="Attending doctor" value={`${patient.doctor} · ${patient.specialty}`} />
+                    <Fact label="Room" value={`${patient.room ?? '—'} · ${patient.unit ?? '—'}`} />
+                    <Fact label="Last visit" value={formatDate(patient.lastVisit, '—')} />
+                    <Fact label="Attending doctor" value={`${patient.doctor.displayName} · ${patient.doctor.specialty}`} />
                   </dl>
                   <Link
-                    to={patientPath(patient.id)}
+                    to={patientPath(patient.patientId)}
                     className="db-directory-card-link"
-                    aria-label={`View patient ${patient.name}`}
+                    aria-label={`View patient ${patient.displayName}`}
                   >
                     View patient
                   </Link>
@@ -478,16 +535,18 @@ function PatientDirectoryPage() {
 
         <div className="db-directory-foot">
           <p className="db-directory-count">
-            {rows.length === 0
-              ? 'No patients match these filters'
-              : `Showing ${(currentPage - 1) * DIRECTORY_PAGE_SIZE + 1}-${(currentPage - 1) * DIRECTORY_PAGE_SIZE + pageRows.length} of ${rows.length.toLocaleString('en-US')} patients`}
+            {loading || error
+              ? 'Loading patient records'
+              : rows.length === 0
+                ? 'No patients match these filters'
+                : `Showing ${(currentPage - 1) * DIRECTORY_PAGE_SIZE + 1}-${(currentPage - 1) * DIRECTORY_PAGE_SIZE + rows.length} of ${total.toLocaleString('en-US')} patients`}
           </p>
           <nav className="db-pagination" aria-label="Patient directory pages">
             <span className="db-page-status">Page {currentPage} of {pageCount}</span>
             <button
               type="button"
               className="db-page db-page--step"
-              disabled={currentPage === 1}
+              disabled={loading || currentPage === 1}
               onClick={() => setPage(currentPage - 1)}
               aria-label="Previous page"
             >
@@ -513,7 +572,7 @@ function PatientDirectoryPage() {
             <button
               type="button"
               className="db-page db-page--step"
-              disabled={currentPage === pageCount}
+              disabled={loading || currentPage === pageCount}
               onClick={() => setPage(currentPage + 1)}
               aria-label="Next page"
             >
@@ -534,10 +593,10 @@ function PatientDirectoryPage() {
           <button type="button" className="db-dialog-close" onClick={() => setAddOpen(false)}>
             {CLOSE_GLYPH}<span className="sr-only">Close</span>
           </button>
-          <h2 id={addTitleId}>Patient creation is not available in this demo.</h2>
+          <h2 id={addTitleId}>Patient registration is not available.</h2>
           <p className="db-dialog-sub">
-            This directory renders supplied reference records. Registering a patient needs an approved record workflow and
-            backend, which this demo does not include.
+            The patient directory reads stored records. Creating a patient needs a registration workflow that this
+            service does not expose.
           </p>
           <div className="db-dialog-actions">
             <button type="button" className="db-dialog-secondary" onClick={() => setAddOpen(false)}>Close</button>
@@ -548,7 +607,4 @@ function PatientDirectoryPage() {
   )
 }
 
-export { PatientDirectoryPage }
-
-/** Shared with the detail route so directory records render the same identity treatment. */
-export { PatientAvatar }
+export { PatientDirectoryPage, Avatar as PatientAvatar }

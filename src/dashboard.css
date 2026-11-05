@@ -9313,3 +9313,101 @@
   }
 }
 
+
+/* Patient detail visual alignment with the supplied references. */
+.db-pd-status-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.db-pd-vital-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+.db-pd-vital--heart .db-pd-vital-icon { color: #c2325f; background: #fde8ef; }
+.db-pd-vital--pulse .db-pd-vital-icon { color: #c2542a; background: #fdece4; }
+.db-pd-vital--temperature .db-pd-vital-icon { color: #2a63b8; background: #e7f0fd; }
+.db-pd-vital--weight .db-pd-vital-icon { color: #5a43b5; background: #eee9fc; }
+
+.db-pd-ai-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.db-pd-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.db-pd-ai-assistant {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  background: var(--dashboard-teal-dark);
+  border-radius: 10px;
+}
+
+.db-pd-ai-box {
+  padding: 14px 16px;
+  background: #f1fbf7;
+  border: 1px solid #d6efe6;
+  border-radius: 12px;
+}
+
+.db-pd-ai-box .db-pd-ai-sources {
+  min-height: 0;
+  margin-top: 10px;
+}
+
+.db-pd-summary .db-pd-card {
+  padding: 16px 18px;
+}
+
+.db-pd-summary .db-pd-card-head {
+  margin-bottom: 10px;
+}
+
+.db-pd-summary .db-pd-context-grid {
+  gap: 8px;
+}
+
+.db-pd-summary .db-pd-context-grid li,
+.db-pd-summary .db-pd-soap-item {
+  padding: 10px;
+}
+
+.db-pd-summary .db-pd-timeline-row {
+  padding: 7px 0;
+}
+
+.db-pd-evidence > .db-pd-card > .db-pd-claim-summary {
+  margin-bottom: 12px;
+}
+
+/* Keep the detail workspace dense enough to show the reference sections above the fold. */
+.db-pd { gap: 10px; }
+.db-pd-ident { padding: 14px 24px 12px; }
+.db-pd-facts { margin-top: 12px; }
+.db-pd-summary .db-pd-context-grid li { padding: 8px 10px; line-height: 1.25; }
+.db-pd-summary .db-pd-ai-box { padding: 12px 14px; }
+.db-pd-summary .db-pd-ai-body { font-size: 13px; line-height: 1.5; }
+.db-pd-summary .db-pd-soap-item { gap: 8px; }

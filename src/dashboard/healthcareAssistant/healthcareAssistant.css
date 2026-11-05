@@ -619,3 +619,34 @@
   .ha-source .ha-tag { grid-column: 2; justify-self: start; }
   .ha-composer-note { justify-content: flex-start; text-align: left; }
 }
+
+/* Assistant breadcrumb and compact conversation header. */
+.ha-crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dashboard-navy);
+}
+
+.ha-page--landing > .ha-crumb { grid-column: 1 / -1; grid-row: 1; }
+.ha-page--landing > .ha-hero { grid-row: 2; }
+.ha-page--landing .ha-main { grid-row: 3; }
+.ha-page--landing .ha-side { grid-row: 2 / span 2; }
+
+.ha-hero--compact { padding: 14px 20px; gap: 10px 16px; }
+.ha-hero--compact h1 { font-size: 30px; }
+.ha-hero--compact .ha-hero-text p { max-width: 430px; margin-top: 4px !important; }
+
+.ha-page--general .ha-hero--compact {
+  grid-template-columns: auto minmax(220px, 1fr) minmax(430px, 0.9fr);
+}
+
+.ha-hero--compact .ha-modes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ha-hero--compact .ha-mode { min-height: 58px; padding: 8px 10px; gap: 10px; }
+.ha-hero--compact .ha-mode--active { padding: 7px 9px; }
+.ha-hero--compact .ha-mode .ha-icon-tile { width: 30px; height: 30px; border-radius: 8px; }
+.ha-hero--compact .ha-mode .ha-icon-tile svg { width: 18px; height: 18px; }
+.ha-hero--compact .ha-mode-label { font-size: 13.5px; }
+.ha-hero--compact .ha-mode-desc { font-size: 11.5px; line-height: 1.3; }

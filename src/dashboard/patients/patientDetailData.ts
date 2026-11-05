@@ -50,7 +50,7 @@ export type PatientIdentity = {
   readonly dateOfBirthLong: string
   readonly phone: string
   readonly address: string
-  readonly emergencyContact: EmergencyContact
+  readonly emergencyContact: EmergencyContact | null
 }
 
 export type Vital = {
@@ -128,7 +128,7 @@ export type SoapNote = {
 
 export type SoapTone = 'subjective' | 'objective' | 'assessment' | 'plan'
 
-export type SourceId = 'S1' | 'S2' | 'S3' | 'S4'
+export type SourceId = string
 
 export type TimelineEntry = {
   readonly date: string
@@ -153,7 +153,7 @@ export type SourceGroup = {
   readonly icon: SourceIconKey
 }
 
-export type SourceIconKey = 'emr' | 'diagnosis' | 'medication' | 'soap'
+export type SourceIconKey = 'emr' | 'diagnosis' | 'medication' | 'soap' | 'laboratory' | 'procedure'
 
 export type QuickActionKey = 'view-sources' | 'export-summary' | 'mark-reviewed' | 'open-assistant'
 
@@ -480,9 +480,9 @@ export type QualityFreshness = {
   readonly icon: string
 }
 
-export type QualityIssueType = 'Missing Data' | 'Data Conflict'
+export type QualityIssueType = 'Missing Data' | 'Data Conflict' | 'Stale Data' | 'Identity Mismatch'
 
-export type QualityImpact = 'High' | 'Medium'
+export type QualityImpact = 'High' | 'Medium' | 'Low'
 
 export type QualityIssue = {
   readonly id: string

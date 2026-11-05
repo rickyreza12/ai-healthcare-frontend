@@ -13,6 +13,12 @@ type AuthState = {
 }
 
 const AuthContext = createContext<AuthState | null>(null)
+const DEV_BYPASS_EMAIL = 'dev@bunda.co.id'
+const DEV_BYPASS_SESSION = 'bunda.dev-auth'
+
+function hasDevBypassSession(): boolean {
+  return import.meta.env.DEV && sessionStorage.getItem(DEV_BYPASS_SESSION) === DEV_BYPASS_EMAIL
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(undefined)
@@ -21,6 +27,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let live = true
     async function load() {
+      if (hasDevBypassSession()) {
+        if (live) {
+          setMenu(MENU_FALLBACK)
+          setUser({ id: 0, email: DEV_BYPASS_EMAIL })
+        }
+        return
+      }
       try {
         const nextUser = await api.me()
         if (!nextUser) {
@@ -43,6 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string, remember: boolean) => {
+    if (import.meta.env.DEV && email.trim().toLowerCase() === DEV_BYPASS_EMAIL) {
+      sessionStorage.setItem(DEV_BYPASS_SESSION, DEV_BYPASS_EMAIL)
+      setMenu(MENU_FALLBACK)
+      setUser({ id: 0, email: DEV_BYPASS_EMAIL })
+      return
+    }
     const nextUser = await api.login(email, password, remember)
     const nextMenu = await api.menu().catch(() => MENU_FALLBACK)
     setMenu(nextMenu)
@@ -50,6 +69,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
+    if (hasDevBypassSession()) {
+      sessionStorage.removeItem(DEV_BYPASS_SESSION)
+      setMenu(undefined)
+      setUser(null)
+      return
+    }
     await api.logout()
     setMenu(undefined)
     setUser(null)

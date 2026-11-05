@@ -1,21 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { AVATARS } from '../dashboardAssets.ts'
-import { RECENT_PATIENTS } from '../dashboardData.ts'
-import { findPatient } from '../dashboardLogic.ts'
-import { StatusBadge, TypeBadge } from '../DashboardPrimitives.tsx'
+import { api, ApiError, type PatientDetail as ApiPatientDetail } from '../../api.ts'
 import { PatientAvatar } from './PatientDirectoryPage.tsx'
-import { DIRECTORY_PATIENTS } from './patientDirectoryData.ts'
-import xrayAp from '../../assets/dashboard/medical-records/chest-xray-ap.png'
-import xrayLateral from '../../assets/dashboard/medical-records/chest-xray-lateral.png'
-import { SCHEDULE_RANGE_LABEL } from '../appointments/appointmentScheduleData.ts'
-import { CHEST_XRAY_DETAIL, RECORD_CATEGORIES, type MedicalRecordType, type RecordCategoryKey } from '../medicalRecords/medicalRecordData.ts'
-import { LAB_FLAG_LABELS, LAB_RANGE_LABEL, LAB_SYNTHETIC_NOTICE } from './patientLabResultData.ts'
-import { REFERENCE_DETAIL, REFERENCE_DETAIL_ID, QUICK_ACTION_LABELS, SUMMARY_SECTIONS, DETAIL_TABS, QUALITY_RELIABILITY, QUALITY_METRICS, QUALITY_FRESHNESS, QUALITY_ISSUES, type Claim, type DataDomain, type EvidenceRecord, type Overview, type QualityMetric, type QualityMetricTone, type SourceId } from './patientDetailData.ts'
-import { findDirectoryPatient } from './patientDirectoryLogic.ts'
+import { QUICK_ACTION_LABELS, SUMMARY_SECTIONS, DETAIL_TABS, type Claim, type DataDomain, type EvidenceRecord, type Overview, type OverviewTab, type QualityMetricTone, type SourceId } from './patientDetailData.ts'
+import { buildIdentity, buildOverview, buildSummaryView, statusLabel, type SummaryView } from './patientDetailView.ts'
+import { usePatientSummary } from '../../features/clinicalAi/presentation/patient-summary/usePatientSummary.ts'
 import {
   ALL_SOURCES,
-  appointmentDayLabel,
   availabilitySplit,
   detailHref,
   domainStatusLabel,
@@ -23,21 +14,13 @@ import {
   evidenceForClaim,
   filterClaims,
   filterEvidenceBySource,
-  filterPatientRecords,
-  groupPatientRecords,
-  medicalRecordsForPatient,
   parseDetailTab,
   parseSummarySection,
-  patientAppointments,
-  patientLabReports,
-  patientVisitHistory,
   resolveActiveClaim,
   reviewedLabel,
   sectionHref,
   type DomainTone,
 } from './patientDetailLogic.ts'
-
-const NOT_AVAILABLE = 'Not available in this reference record'
 
 type IconName =
   | 'home'
@@ -135,6 +118,8 @@ const SOURCE_ICONS: Record<string, IconName> = {
   diagnosis: 'grid',
   medication: 'diamond',
   soap: 'list',
+  laboratory: 'flask',
+  procedure: 'stethoscope',
 }
 
 const CLAIM_ICONS: Record<string, IconName> = {
@@ -229,7 +214,7 @@ function OverviewPanel({ overview, onNotice }: OverviewProps) {
         </div>
         <ul className="db-pd-vital-grid" role="list">
           {overview.vitals.map((vital) => (
-            <li key={vital.label} className="db-pd-vital">
+            <li key={vital.label} className={`db-pd-vital db-pd-vital--${vital.tone}`}>
               <span className="db-pd-vital-top">
                 <span className="db-pd-vital-icon" aria-hidden="true"><Icon name={VITAL_ICONS[vital.tone]} size={20} /></span>
                 <span className="db-pd-vital-reading">
@@ -248,7 +233,7 @@ function OverviewPanel({ overview, onNotice }: OverviewProps) {
         <div className="db-pd-card-head">
           <span className="db-pd-card-icon" aria-hidden="true"><Icon name="monitor" size={20} /></span>
           <div className="db-pd-card-heading"><h2 id="pd-condition">Current Condition</h2></div>
-          <button type="button" className="db-pd-ghost" onClick={() => onNotice('Updating the condition is not available in this demo.', 'This reference shows supplied synthetic content. Writing a clinical condition needs an approved workflow and backend.')}>Update</button>
+          <button type="button" className="db-pd-ghost" onClick={() => onNotice('Updating the condition is not available.', 'The patient record service does not expose a clinical condition update endpoint.')}>Update</button>
         </div>
         <div className="db-pd-condition">
           <span className="db-pd-condition-icon" aria-hidden="true"><Icon name="checkCircle" size={24} /></span>
@@ -308,7 +293,7 @@ function OverviewPanel({ overview, onNotice }: OverviewProps) {
         <div className="db-pd-card-head">
           <span className="db-pd-card-icon" aria-hidden="true"><Icon name="history" size={20} /></span>
           <div className="db-pd-card-heading"><h2 id="pd-history">Medical History</h2></div>
-          <button type="button" className="db-pd-ghost" onClick={() => onNotice('Full record list is not available in this demo.', 'The supplied reference lists four sample history entries. A complete record list needs an approved record workflow and backend.')}>View All Records</button>
+          <button type="button" className="db-pd-ghost" onClick={() => onNotice('Full record list is not available.', 'The patient record service does not expose a complete history list endpoint.')}>View All Records</button>
         </div>
         <ul className="db-pd-history" role="list">
           {overview.history.map((entry) => (
@@ -324,17 +309,19 @@ function OverviewPanel({ overview, onNotice }: OverviewProps) {
   )
 }
 
-function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview, onOpenEvidence }: {
+function SummaryPanel({ patientId, view, claim, onNotice, onExport, reviewed, onReview, onRefresh, onOpenEvidence, busy }: {
   patientId: string
+  view: OverviewTab
   claim: Claim | undefined
   onNotice: (title: string, text: string) => void
   onExport: () => void
   reviewed: boolean
   onReview: () => void
+  onRefresh: () => void
   onOpenEvidence: () => void
+  busy: boolean
 }) {
-  const summary = REFERENCE_DETAIL.overviewTab
-  const availability = availabilitySplit(summary.availability)
+  const availability = availabilitySplit(view.availability)
 
   return (
     <div className="db-pd-summary">
@@ -343,22 +330,26 @@ function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview
           <div className="db-pd-card-head">
             <span className="db-pd-card-icon" aria-hidden="true"><Icon name="refresh" size={20} /></span>
             <div className="db-pd-card-heading">
-              <h2 id="pd-ai">{summary.summary.heading}</h2>
-              <p>{summary.summary.generated} • {summary.summary.sourceNote}</p>
+              <div className="db-pd-ai-title">
+                <h2 id="pd-ai">{view.summary.heading}</h2>
+                <span className="db-pd-chip db-pd-chip--ok">{view.summary.status}</span>
+              </div>
+              <p>{view.summary.generated} • {view.summary.sourceNote}</p>
             </div>
-            <span className="db-pd-chip db-pd-chip--ok">{summary.summary.status}</span>
+            <div className="db-pd-ai-actions">
+              <button type="button" className="db-pd-ghost" disabled={busy} onClick={onRefresh}>
+                <Icon name="refresh" size={16} /> Refresh Summary
+              </button>
+              <Link to={`/dashboard/healthcare-assistant?patientId=${encodeURIComponent(patientId)}`} className="db-pd-ai-assistant">
+                <Icon name="sparkle" size={16} /> Open in Healthcare Assistant
+              </Link>
+            </div>
           </div>
-          <p className="db-pd-ai-body">{summary.summary.body}</p>
-          <div className="db-pd-ai-foot">
+          <div className="db-pd-ai-box">
+            <p className="db-pd-ai-body">{view.summary.body}</p>
             <button type="button" className="db-pd-ai-sources" onClick={onOpenEvidence}>
-              <Icon name="list" size={16} /> {summary.summary.sourceCount} sources
+              <Icon name="list" size={16} /> {view.summary.sourceCount} sources
             </button>
-            <button type="button" className="db-pd-ghost" onClick={() => onNotice('Refreshing the summary is not available in this demo.', 'This summary is supplied synthetic reference content. It is not generated by a live model in this demo.')}>
-              <Icon name="refresh" size={16} /> Refresh Summary
-            </button>
-            <Link to="/dashboard/healthcare-assistant" className="db-pd-ghost">
-              <Icon name="monitor" size={16} /> Open in Healthcare Assistant
-            </Link>
           </div>
         </section>
 
@@ -368,7 +359,7 @@ function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview
             <div className="db-pd-card-heading"><h2 id="pd-context">Known Clinical Context</h2></div>
           </div>
           <ul className="db-pd-context-grid" role="list">
-            {summary.context.map((card) => (
+            {view.context.map((card) => (
               <li key={card.label}>
                 <span className="db-pd-context-icon" aria-hidden="true"><Icon name={CONTEXT_ICONS[card.icon]} size={18} /></span>
                 <span className="db-pd-context-body">
@@ -387,7 +378,7 @@ function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview
             <div className="db-pd-card-heading"><h2 id="pd-soap">SOAP Highlights</h2></div>
           </div>
           <ul className="db-pd-soap" role="list">
-            {summary.soap.map((note) => (
+            {view.soap.map((note) => (
               <li key={note.label} className={`db-pd-soap-item db-pd-soap-item--${note.tone}`}>
                 <span className="db-pd-soap-initial" aria-hidden="true">{note.initial}</span>
                 <span className="db-pd-soap-body"><strong>{note.label}</strong><span>{note.body}</span></span>
@@ -403,9 +394,9 @@ function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview
             <Link to={detailHref(patientId, 'appointments')} className="db-pd-ghost">View All Visits</Link>
           </div>
           <ul className="db-pd-timeline" role="list">
-            {summary.timeline.map((entry) => (
+            {view.timeline.map((entry) => (
               <li key={`${entry.date}-${entry.source}`} className="db-pd-timeline-row">
-                <button type="button" className="db-pd-timeline-main" onClick={() => onNotice(`${entry.title} on ${entry.date}`, `${entry.note} Clinician: ${entry.clinician}. Supplied synthetic reference record.`)}>
+                <button type="button" className="db-pd-timeline-main" onClick={() => onNotice(`${entry.title} on ${entry.date}`, `${entry.note} Clinician: ${entry.clinician}. Source ${entry.source}.`)}>
                   <span className="db-pd-timeline-date">{entry.date}</span>
                   <span className="db-pd-timeline-body"><strong>{entry.title}</strong><span>{entry.clinician}</span></span>
                   <span className="db-pd-timeline-note">{entry.note}</span>
@@ -429,10 +420,10 @@ function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview
           <div className="db-pd-card-head">
             <span className="db-pd-card-icon db-pd-card-icon--alert" aria-hidden="true"><Icon name="alert" size={20} /></span>
             <div className="db-pd-card-heading"><h2 id="pd-alerts">Clinical Alerts / Review Needed</h2></div>
-            <span className="db-pd-badge-count">{summary.alerts.length}</span>
+            <span className="db-pd-badge-count">{view.alerts.length}</span>
           </div>
           <ul className="db-pd-alerts" role="list">
-            {summary.alerts.map((alert) => (
+            {view.alerts.map((alert) => (
               <li key={alert.title}>
                 <button type="button" className={`db-pd-alert db-pd-alert--${alert.level}`} onClick={() => onNotice(alert.title, alert.description)}>
                   <span className="db-pd-alert-icon" aria-hidden="true">
@@ -453,7 +444,7 @@ function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview
           </div>
           <p className="db-pd-rail-note">Each item is linked to source records and can be viewed with citations.</p>
           <ul className="db-pd-source-list" role="list">
-            {summary.sourceGroups.map((group) => (
+            {view.sourceGroups.map((group) => (
               <li key={group.label}>
                 <Link to={sectionHref(patientId, 'evidence')} className="db-pd-source-row">
                   <span className="db-pd-source-icon" aria-hidden="true"><Icon name={SOURCE_ICONS[group.icon]} size={18} /></span>
@@ -486,7 +477,7 @@ function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview
             <button type="button" className="db-pd-quick-btn db-pd-quick-btn--primary" aria-pressed={reviewed} onClick={onReview}>
               <Icon name={QUICK_ICONS['mark-reviewed']} size={18} /> {reviewedLabel(reviewed)}
             </button>
-            <Link to="/dashboard/healthcare-assistant" className="db-pd-quick-btn">
+            <Link to={`/dashboard/healthcare-assistant?patientId=${encodeURIComponent(patientId)}`} className="db-pd-quick-btn">
               <Icon name={QUICK_ICONS['open-assistant']} size={18} /> {QUICK_ACTION_LABELS['open-assistant']}
               <Icon name="chevron" size={16} />
             </Link>
@@ -511,15 +502,17 @@ function SummaryPanel({ patientId, claim, onNotice, onExport, reviewed, onReview
       </section>
 
       <p className="sr-only">
-        Selected claim: {claim ? claim.title : 'none'}. Summary content is supplied synthetic reference material, not a live model output.
+        Selected claim: {claim ? claim.title : 'none'}. Summary content is generated from the cited source records.
       </p>
     </div>
   )
 }
 
-function EvidencePanel({ patientId }: { patientId: string }) {
-  const claims = REFERENCE_DETAIL.claims
-  const records = REFERENCE_DETAIL.evidence
+function EvidencePanel({ patientId, claims, records }: {
+  patientId: string
+  claims: readonly Claim[]
+  records: readonly EvidenceRecord[]
+}) {
   const [sourceFilter, setSourceFilter] = useState<SourceId | typeof ALL_SOURCES>(ALL_SOURCES)
   const [activeId, setActiveId] = useState<string>(claims[0]?.id ?? '')
 
@@ -539,7 +532,7 @@ function EvidencePanel({ patientId }: { patientId: string }) {
           <div className="db-pd-filter">
             <label className="sr-only" htmlFor="pd-source-filter">Filter by Source</label>
             <select id="pd-source-filter" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as SourceId | typeof ALL_SOURCES)}>
-              <option value={ALL_SOURCES}>All Sources</option>
+              <option value={ALL_SOURCES}>Filter by Source</option>
               {records.map((record) => (
                 <option key={record.source} value={record.source}>{record.source} – {record.title}</option>
               ))}
@@ -575,17 +568,6 @@ function EvidencePanel({ patientId }: { patientId: string }) {
       </section>
 
       <section className="db-pd-card" aria-labelledby="pd-evidence">
-        <div className="db-pd-card-head">
-          <span className="db-pd-card-icon" aria-hidden="true"><Icon name="list" size={20} /></span>
-          <div className="db-pd-card-heading">
-            <h2 id="pd-evidence">Evidence from Source Records</h2>
-            <p>These records support the claim. Click on each source to view full details.</p>
-          </div>
-          <button type="button" className="db-pd-ghost" disabled={sourceFilter === ALL_SOURCES} onClick={() => setSourceFilter(ALL_SOURCES)}>
-            <Icon name="list" size={16} /> View All Sources
-          </button>
-        </div>
-
         {active && (
           <div className="db-pd-claim-summary">
             <span className="db-pd-claim-number" aria-hidden="true">{active.number}</span>
@@ -602,6 +584,17 @@ function EvidencePanel({ patientId }: { patientId: string }) {
             </span>
           </div>
         )}
+
+        <div className="db-pd-card-head">
+          <span className="db-pd-card-icon" aria-hidden="true"><Icon name="list" size={20} /></span>
+          <div className="db-pd-card-heading">
+            <h2 id="pd-evidence">Evidence from Source Records</h2>
+            <p>These records support the claim. Click on each source to view full details.</p>
+          </div>
+          <button type="button" className="db-pd-ghost" disabled={sourceFilter === ALL_SOURCES} onClick={() => setSourceFilter(ALL_SOURCES)}>
+            <Icon name="list" size={16} /> View All Sources
+          </button>
+        </div>
 
         <ul className="db-pd-records" role="list">
           {activeEvidence.map((record: EvidenceRecord) => (
@@ -623,16 +616,20 @@ function EvidencePanel({ patientId }: { patientId: string }) {
             </li>
           ))}
         </ul>
-        <p className="sr-only">Records are supplied synthetic fixtures. Nothing on this page performs live clinical validation.</p>
+        <p className="sr-only">Records are cited directly from the patient's source records.</p>
       </section>
       <p className="sr-only">Opened from patient {patientId}.</p>
     </div>
   )
 }
 
-function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string) => void }) {
-  const domains = REFERENCE_DETAIL.domains
-  const reliability = QUALITY_RELIABILITY
+function DataQualityPanel({ view, onRefresh, busy }: {
+  view: SummaryView
+  onRefresh: () => void
+  busy: boolean
+}) {
+  const domains = view.domains
+  const reliability = view.reliability
   const ringRotation = -81
 
   return (
@@ -678,7 +675,7 @@ function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string
                 <span className="db-pd-reliability-badge" aria-hidden="true"><Icon name="checkCircle" size={20} /></span>
                 <h3 className="db-pd-reliability-title">{reliability.label}</h3>
                 <span className="db-pd-info" aria-hidden="true"><Icon name="info" size={15} /></span>
-                <span className="sr-only">These quality values are supplied synthetic reference fixtures.</span>
+                <span className="sr-only">These quality values come from the stored data quality assessment.</span>
                 <span className="db-pd-chip db-pd-chip--ok"><Icon name="diamond" size={11} /> {reliability.status}</span>
               </div>
               <p className="db-pd-reliability-copy">{reliability.copy}</p>
@@ -686,7 +683,7 @@ function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string
           </div>
 
           <ul className="db-pd-metrics" role="list">
-            {QUALITY_METRICS.map((metric: QualityMetric) => (
+            {view.metrics.map((metric) => (
               <li key={metric.id} className={`db-pd-metric db-pd-metric--${metric.tone}`}>
                 <span className="db-pd-metric-head">
                   <span className="db-pd-metric-icon" aria-hidden="true"><Icon name={METRIC_ICONS[metric.tone]} size={19} /></span>
@@ -729,8 +726,8 @@ function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string
             })}
           </ul>
           <p className="sr-only">
-            Availability reflects supplied reference fixtures. Not Yet Integrated means a domain may exist elsewhere but is
-            not part of this summary fixture. Not Available means the reference fixture provides no data for that domain.
+            Availability reflects the stored data quality assessment. Not Yet Integrated means a domain may exist elsewhere
+            but is not part of this patient's summary. Not Available means the record provides no data for that domain.
           </p>
         </section>
       </div>
@@ -745,16 +742,14 @@ function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string
             <button
               type="button"
               className="db-pd-ghost db-pd-refresh"
-              onClick={() => onNotice(
-                'Refreshing Data Quality is not available in this demo.',
-                'This page renders supplied static reference fixtures. A live refresh needs an approved data-quality service and backend.',
-              )}
+              disabled={busy}
+              onClick={onRefresh}
             >
               <Icon name="refresh" size={16} /> Refresh Data Quality
             </button>
           </div>
           <ul className="db-pd-freshness" role="list">
-            {QUALITY_FRESHNESS.map((record) => (
+            {view.freshness.map((record) => (
               <li key={record.id}>
                 <span className="db-pd-freshness-icon" aria-hidden="true"><Icon name={FRESHNESS_ICONS[record.icon] ?? 'list'} size={20} /></span>
                 <span className="db-pd-freshness-label">{record.label}</span>
@@ -762,7 +757,7 @@ function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string
               </li>
             ))}
           </ul>
-          <p className="sr-only">Freshness values are supplied static reference fixtures and are not recalculated against the system clock.</p>
+          <p className="sr-only">Freshness values are reported by the stored data quality assessment.</p>
         </section>
 
         <section className="db-pd-card db-pd-quality-gaps" aria-labelledby="pd-gaps">
@@ -772,7 +767,7 @@ function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string
               <h2 id="pd-gaps">Gaps &amp; Conflicts</h2>
               <p>Data issues that may affect completeness or accuracy of the AI summary.</p>
             </div>
-            <span className="db-pd-count">{QUALITY_ISSUES.length} items</span>
+            <span className="db-pd-count">{view.issues.length} items</span>
           </div>
           <div className="db-pd-table-scroll" role="region" aria-label="Data quality issues" tabIndex={0}>
             <table className="db-pd-gaps">
@@ -792,7 +787,7 @@ function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string
                 </tr>
               </thead>
               <tbody>
-                {QUALITY_ISSUES.map((issue, index) => (
+                {view.issues.map((issue, index) => (
                   <tr key={issue.id}>
                     <td className="db-pd-gaps-num">{index + 1}</td>
                     <th scope="row" className="db-pd-gaps-issue">
@@ -810,364 +805,149 @@ function DataQualityPanel({ onNotice }: { onNotice: (title: string, text: string
       </div>
 
       <p className="db-pd-quality-note">
-        Reliability scores, supporting metrics, freshness dates, and issue rows are supplied synthetic reference fixtures
-        for this demo. Nothing on this page computes them from live patient records.
+        Reliability scores, supporting metrics, freshness dates, and issue rows are reported by the backend data quality
+        assessment for this patient.
       </p>
     </div>
   )
 }
 
-const RECORD_ICONS: Record<MedicalRecordType, IconName> = {
-  Consultation: 'stethoscope',
-  'Lab Result': 'flask',
-  Prescription: 'diamond',
-  Imaging: 'image',
-  Document: 'list',
-}
-
-const RECORD_IMAGES: Record<'ap' | 'lateral', string> = { ap: xrayAp, lateral: xrayLateral }
-
-function TabUnavailable({ title, body }: { title: string; body: string }) {
+function TabUnavailable({ title }: { title: string }) {
+  const id = `pd-${title.toLowerCase().replace(/\s+/g, '-')}`
   return (
-    <section className="db-pd-card db-pd-clin" aria-label={title}>
+    <section className="db-pd-card" aria-labelledby={id}>
       <div className="db-pd-card-head">
         <span className="db-pd-card-icon" aria-hidden="true"><Icon name="info" size={20} /></span>
-        <div className="db-pd-card-heading"><h2>{title}</h2><p>{body}</p></div>
-      </div>
-      <div className="db-detail-actions"><Link to="/dashboard/patients" className="db-back-link">Back to Patient Directory</Link></div>
-    </section>
-  )
-}
-
-function MedicalRecordPanel({ patientId }: { patientId: string }) {
-  const [category, setCategory] = useState<RecordCategoryKey>('all')
-  const records = medicalRecordsForPatient(patientId)
-  if (records.length === 0) {
-    return <TabUnavailable title="Medical Record" body="Extended medical records are supplied only for the reference patient in this demo." />
-  }
-  const groups = groupPatientRecords(filterPatientRecords(records, category))
-
-  return (
-    <section className="db-pd-card db-pd-clin" aria-labelledby="pd-clin-record">
-      <div className="db-pd-card-head">
-        <span className="db-pd-card-icon" aria-hidden="true"><Icon name="list" size={20} /></span>
         <div className="db-pd-card-heading">
-          <h2 id="pd-clin-record">Medical Record</h2>
-          <p>{records.length} supplied records for this patient, newest first. Expand a row for the supplied detail.</p>
+          <h2 id={id}>{title}</h2>
+          <p>This record type is not available from the patient record service.</p>
         </div>
-        <Link to="/dashboard/medical-records" className="db-pd-ghost">View full medical records</Link>
       </div>
-      <div className="db-pd-clin-filters" role="group" aria-label="Filter records by category">
-        {RECORD_CATEGORIES.map((entry) => (
-          <button
-            key={entry.key}
-            type="button"
-            className="db-pd-clin-filter"
-            aria-pressed={category === entry.key}
-            onClick={() => setCategory(entry.key)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-      {groups.length === 0 && (
-        <div className="db-pd-clin-empty">
-          <p>No supplied records match this category.</p>
-          <button type="button" className="db-pd-inline-link" onClick={() => setCategory('all')}>Show all records</button>
-        </div>
-      )}
-      {groups.map((group) => (
-        <section key={group.month} className="db-pd-clin-group" aria-label={group.month}>
-          <h3>{group.month}</h3>
-          <ul className="db-pd-clin-list" role="list">
-            {group.records.map((record) => (
-              <li key={record.id}>
-                <details className="db-pd-clin-record">
-                  <summary>
-                    <span className="db-pd-clin-record-icon" aria-hidden="true"><Icon name={RECORD_ICONS[record.type]} size={18} /></span>
-                    <span className="db-pd-clin-record-main">
-                      <span className="db-pd-clin-record-title">{record.title}</span>
-                      <span className="db-pd-clin-record-sub">{record.type} • {record.clinician}</span>
-                    </span>
-                    <span className="db-pd-clin-record-date">{record.date}<small>{record.time}</small></span>
-                    <span className={`db-pd-clin-status db-pd-clin-status--${record.status.toLowerCase()}`}>{record.status}</span>
-                    <Icon name="chevron" size={16} className="db-pd-clin-chevron" />
-                  </summary>
-                  <div className="db-pd-clin-record-body">
-                    <dl className="db-pd-clin-facts">
-                      <div><dt>Record type</dt><dd>{record.type}</dd></div>
-                      <div><dt>Clinician</dt><dd>{record.clinician}</dd></div>
-                      <div><dt>Date</dt><dd>{record.date}, {record.time}</dd></div>
-                      <div><dt>Status</dt><dd>{record.status}</dd></div>
-                      {record.examination && <div><dt>Examination</dt><dd>{record.examination}</dd></div>}
-                      {record.reason && <div><dt>Reason</dt><dd>{record.reason}</dd></div>}
-                    </dl>
-                    {record.id === CHEST_XRAY_DETAIL.recordId ? (
-                      <>
-                        <p className="db-pd-clin-findings">{CHEST_XRAY_DETAIL.findings}</p>
-                        <div className="db-pd-clin-images">
-                          {CHEST_XRAY_DETAIL.images.map((image) => (
-                            <figure key={image.key}>
-                              <img src={RECORD_IMAGES[image.key]} alt={image.alt} width={image.width} height={image.height} loading="lazy" />
-                              <figcaption>{image.label}</figcaption>
-                            </figure>
-                          ))}
-                        </div>
-                        <p className="db-pd-clin-doc">{CHEST_XRAY_DETAIL.documentTitle} • {CHEST_XRAY_DETAIL.documentMeta}</p>
-                      </>
-                    ) : (
-                      <p className="db-pd-clin-note">No further detail is supplied for this record.</p>
-                    )}
-                  </div>
-                </details>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      <p className="db-pd-rail-note">
+        The service exposes patient identity, overview, AI summary, and data quality. It does not expose a
+        {' '}{title.toLowerCase()} endpoint, so no records are shown.
+      </p>
     </section>
   )
 }
-
-function AppointmentsPanel({ patientId }: { patientId: string }) {
-  const [segment, setSegment] = useState<'scheduled' | 'history'>('scheduled')
-  if (patientId !== REFERENCE_DETAIL_ID) {
-    return <TabUnavailable title="Appointments" body="Appointment and visit-history fixtures are supplied only for the reference patient in this demo." />
-  }
-  const appointments = patientAppointments(patientId)
-  const history = patientVisitHistory(patientId)
-
-  return (
-    <section className="db-pd-card db-pd-clin" aria-labelledby="pd-clin-appointments">
-      <div className="db-pd-card-head">
-        <span className="db-pd-card-icon" aria-hidden="true"><Icon name="calendar" size={20} /></span>
-        <div className="db-pd-card-heading">
-          <h2 id="pd-clin-appointments">Appointments</h2>
-          <p>Scheduled slots and visit history supplied for this patient.</p>
-        </div>
-        <Link to="/dashboard/appointments" className="db-pd-ghost">Open appointment schedule</Link>
-      </div>
-      <div className="db-pd-clin-segments" role="group" aria-label="Appointment segments">
-        <button type="button" className="db-pd-clin-segment" aria-pressed={segment === 'scheduled'} onClick={() => setSegment('scheduled')}>Scheduled</button>
-        <button type="button" className="db-pd-clin-segment" aria-pressed={segment === 'history'} onClick={() => setSegment('history')}>Visit history</button>
-      </div>
-
-      {segment === 'scheduled' && (appointments.length === 0 ? (
-        <div className="db-pd-clin-empty">
-          <p>No scheduled appointment is included in this reference dataset for this patient.</p>
-          <Link to="/dashboard/appointments" className="db-back-link">Open appointment schedule</Link>
-        </div>
-      ) : (
-        <ul className="db-pd-clin-list" role="list">
-          {appointments.map((appointment) => (
-            <li key={appointment.id}>
-              <details className="db-pd-clin-record">
-                <summary>
-                  <span className="db-pd-clin-record-icon" aria-hidden="true"><Icon name="calendar" size={18} /></span>
-                  <span className="db-pd-clin-record-main">
-                    <span className="db-pd-clin-record-title">{appointment.visit}</span>
-                    <span className="db-pd-clin-record-sub">{appointment.clinic} • {appointment.room}</span>
-                  </span>
-                  <span className="db-pd-clin-record-date">{appointmentDayLabel(appointment)}<small>{appointment.start} - {appointment.end}</small></span>
-                  <Icon name="chevron" size={16} className="db-pd-clin-chevron" />
-                </summary>
-                <div className="db-pd-clin-record-body">
-                  <dl className="db-pd-clin-facts">
-                    <div><dt>Date</dt><dd>{appointmentDayLabel(appointment)}</dd></div>
-                    <div><dt>Time</dt><dd>{appointment.start} - {appointment.end}</dd></div>
-                    <div><dt>Visit</dt><dd>{appointment.visit}</dd></div>
-                    <div><dt>Clinic</dt><dd>{appointment.clinic}</dd></div>
-                    <div><dt>Room</dt><dd>{appointment.room}</dd></div>
-                    <div><dt>Doctor</dt><dd>{appointment.doctor}</dd></div>
-                    <div><dt>Schedule reference</dt><dd>{SCHEDULE_RANGE_LABEL}</dd></div>
-                  </dl>
-                </div>
-              </details>
-            </li>
-          ))}
-        </ul>
-      ))}
-
-      {segment === 'history' && (history.length === 0 ? (
-        <div className="db-pd-clin-empty">
-          <p>No visit history is included in this reference dataset for this patient.</p>
-          <Link to="/dashboard/appointments" className="db-back-link">Open appointment schedule</Link>
-        </div>
-      ) : (
-        <ul className="db-pd-clin-list" role="list">
-          {history.map((visit) => (
-            <li key={visit.date}>
-              <details className="db-pd-clin-record">
-                <summary>
-                  <span className="db-pd-clin-record-icon" aria-hidden="true"><Icon name="list" size={18} /></span>
-                  <span className="db-pd-clin-record-main">
-                    <span className="db-pd-clin-record-title">{visit.title}</span>
-                    <span className="db-pd-clin-record-sub">{visit.clinician} • {visit.role}</span>
-                  </span>
-                  <span className="db-pd-clin-record-date">{visit.date}</span>
-                  <Icon name="chevron" size={16} className="db-pd-clin-chevron" />
-                </summary>
-                <div className="db-pd-clin-record-body">
-                  <dl className="db-pd-clin-facts">
-                    <div><dt>Date</dt><dd>{visit.date}</dd></div>
-                    <div><dt>Visit</dt><dd>{visit.title}</dd></div>
-                    <div><dt>Clinician</dt><dd>{visit.clinician}</dd></div>
-                    <div><dt>Role</dt><dd>{visit.role}</dd></div>
-                    <div><dt>Clinical note</dt><dd>{visit.note}</dd></div>
-                  </dl>
-                </div>
-              </details>
-            </li>
-          ))}
-        </ul>
-      ))}
-      {segment === 'scheduled' && <p className="db-pd-clin-note">Week labels follow the supplied reference schedule ({SCHEDULE_RANGE_LABEL}).</p>}
-    </section>
-  )
-}
-
-function LabResultsPanel({ patientId }: { patientId: string }) {
-  const reports = patientLabReports(patientId)
-  if (reports.length === 0) {
-    return <TabUnavailable title="Lab Results" body="Laboratory demo reports are supplied only for the reference patient in this demo." />
-  }
-
-  return (
-    <section className="db-pd-card db-pd-clin" aria-labelledby="pd-clin-lab">
-      <div className="db-pd-card-head">
-        <span className="db-pd-card-icon" aria-hidden="true"><Icon name="flask" size={20} /></span>
-        <div className="db-pd-card-heading">
-          <h2 id="pd-clin-lab">Lab Results</h2>
-          <p>{reports.length} demo reports attached to supplied medical-record entries. Expand a report for its values.</p>
-        </div>
-        <Link to="/dashboard/laboratory" className="db-pd-ghost">Open laboratory workspace</Link>
-      </div>
-      <p className="db-pd-clin-notice" role="note"><Icon name="info" size={18} /> {LAB_SYNTHETIC_NOTICE}</p>
-      <p className="db-pd-clin-note">No live laboratory feed is connected in this demo, and these 2024 reports are not recent results for the current visit.</p>
-      <ul className="db-pd-clin-list" role="list">
-        {reports.map((report) => (
-          <li key={report.id}>
-            <details className="db-pd-clin-record">
-              <summary>
-                <span className="db-pd-clin-record-icon" aria-hidden="true"><Icon name="flask" size={18} /></span>
-                <span className="db-pd-clin-record-main">
-                  <span className="db-pd-clin-record-title">{report.title}</span>
-                  <span className="db-pd-clin-record-sub">Collected {report.collectedAt} • Ordered by {report.orderedBy}</span>
-                </span>
-                <span className="db-pd-clin-record-date">{report.analytes.length} results</span>
-                <span className="db-pd-clin-status db-pd-clin-status--completed">{report.status}</span>
-                <Icon name="chevron" size={16} className="db-pd-clin-chevron" />
-              </summary>
-              <div className="db-pd-clin-record-body">
-                <dl className="db-pd-clin-facts">
-                  <div><dt>Collected</dt><dd>{report.collectedAt}</dd></div>
-                  <div><dt>Reported</dt><dd>{report.reportedAt}</dd></div>
-                  <div><dt>Specimen</dt><dd>{report.specimen}</dd></div>
-                  <div><dt>Ordered by</dt><dd>{report.orderedBy}</dd></div>
-                  <div><dt>Status</dt><dd>{report.status}</dd></div>
-                </dl>
-                <div className="db-pd-clin-table-scroll" role="region" aria-label={`${report.title} demo result values`} tabIndex={0}>
-                  <table className="db-pd-clin-table">
-                    <caption>{report.title} demo result values</caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">Test</th>
-                        <th scope="col">Result</th>
-                        <th scope="col">Unit</th>
-                        <th scope="col">{LAB_RANGE_LABEL}</th>
-                        <th scope="col">Flag</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.analytes.map((analyte) => (
-                        <tr key={analyte.id}>
-                          <th scope="row">{analyte.name}</th>
-                          <td>{analyte.result}</td>
-                          <td>{analyte.unit ?? ''}</td>
-                          <td>{analyte.referenceRange}</td>
-                          <td><span className={`db-pd-clin-flag db-pd-clin-flag--${analyte.flag}`}>{LAB_FLAG_LABELS[analyte.flag]}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </details>
-          </li>
-        ))}
-      </ul>
-      <p className="db-pd-clin-note">No diagnosis, interpretation, or treatment advice is derived from these demo values.</p>
-    </section>
-  )
-}
-
-function RecentPatientRecord({ id }: { id: string }) {
-  const record = findPatient(RECENT_PATIENTS, id)
-  if (!record) {
-    return (
-      <section className="db-feature-empty" aria-label="Record not found">
-        <p className="db-feature-empty-title">Record not found</p>
-        <p className="db-feature-empty-text">No patient matches {id}.</p>
-        <div className="db-detail-actions">
-          <Link to="/dashboard/patients" className="db-back-link">All Patients</Link>
-          <Link to="/dashboard" className="db-panel-link">Back to Dashboard</Link>
-        </div>
-      </section>
-    )
-  }
-  return (
-    <>
-      <div className="db-detail-head">
-        <img src={AVATARS[record.avatar]} alt="" width={64} height={64} className="db-avatar" />
-        <div className="db-detail-identity">
-          <h1>{record.name}</h1>
-          <p className="db-detail-sub">{record.id}</p>
-        </div>
-        <StatusBadge status={record.status} />
-      </div>
-      <dl className="db-detail-facts">
-        <div><dt>Patient type</dt><dd><TypeBadge category={record.category} /></dd></div>
-        <div><dt>Reason for visit</dt><dd>{record.reason}</dd></div>
-        <div><dt>Visit time</dt><dd>{record.time}</dd></div>
-        <div><dt>Status</dt><dd>{record.status}</dd></div>
-      </dl>
-      <div className="db-detail-actions">
-        <Link to="/dashboard" className="db-back-link">Back to Dashboard</Link>
-        <Link to="/dashboard/patients" className="db-panel-link">All Patients</Link>
-      </div>
-    </>
-  )
-}
-
 function PatientDetailPage() {
   const params = useParams()
   const patientId = params.patientId ?? ''
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [notice, setNotice] = useState<Notice | null>(null)
-  const [reviewed, setReviewed] = useState(false)
+  const [patient, setPatient] = useState<ApiPatientDetail | null>(null)
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
+  const [loadError, setLoadError] = useState('')
+  const [reloadToken, setReloadToken] = useState(0)
+  const ai = usePatientSummary(patientId)
+
+  useEffect(() => {
+    if (!patientId) { setLoadState('missing'); return }
+    const abort = new AbortController()
+    setLoadState('loading')
+    setLoadError('')
+    api.patients.get(patientId).then((next) => {
+      if (!abort.signal.aborted) { setPatient(next); setLoadState('ready') }
+    }).catch((reason) => {
+      if (abort.signal.aborted) return
+      setPatient(null)
+      if (reason instanceof ApiError && reason.status === 404) setLoadState('missing')
+      else {
+        setLoadError(
+          reason instanceof ApiError && reason.status === 401
+            ? 'Your session expired. Sign in again to continue.'
+            : reason instanceof ApiError && reason.status === 403
+              ? 'You do not have permission to view this patient record.'
+              : reason instanceof Error ? reason.message : 'The patient record could not be loaded.',
+        )
+        setLoadState('error')
+      }
+    })
+    return () => abort.abort()
+  }, [patientId, reloadToken])
 
   const tab = parseDetailTab(searchParams.get('tab'))
   const section = parseSummarySection(searchParams.get('section'))
-  const directory = patientId ? findDirectoryPatient(DIRECTORY_PATIENTS, patientId) : undefined
-  const isReference = directory?.id === REFERENCE_DETAIL_ID
   const openNotice = (title: string, text: string) => setNotice({ title, text })
+  const busy = ai.action !== 'idle'
 
-  if (!directory) {
-    return <div className="db-detail"><div className="db-detail-kicker">Patient record</div><RecentPatientRecord id={patientId} /></div>
+  if (loadState === 'loading') {
+    return (
+      <div className="db-pd">
+        <section className="db-pd-card" aria-busy="true">
+          <div className="db-pd-card-head">
+            <span className="db-pd-card-icon" aria-hidden="true"><Icon name="person" size={20} /></span>
+            <div className="db-pd-card-heading">
+              <h2>Loading patient record</h2>
+              <p>Retrieving the stored patient identity and overview.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    )
   }
 
-  const identity = isReference ? REFERENCE_DETAIL.identity : null
-  const meta = identity
-    ? `${identity.age} years • ${identity.gender} • ${identity.religion}`
-    : `${directory.age} years • ${directory.gender}`
+  if (loadState === 'missing') {
+    return (
+      <div className="db-pd">
+        <section className="db-pd-card">
+          <div className="db-pd-card-head">
+            <span className="db-pd-card-icon" aria-hidden="true"><Icon name="info" size={20} /></span>
+            <div className="db-pd-card-heading">
+              <h2>Patient not found</h2>
+              <p>No stored patient matches {patientId || 'this identifier'}.</p>
+            </div>
+          </div>
+          <div className="db-detail-actions">
+            <Link to="/dashboard/patients" className="db-back-link">Back to Patient Directory</Link>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  if (loadState === 'error' || !patient) {
+    return (
+      <div className="db-pd">
+        <section className="db-pd-card" role="alert">
+          <div className="db-pd-card-head">
+            <span className="db-pd-card-icon db-pd-card-icon--alert" aria-hidden="true"><Icon name="alert" size={20} /></span>
+            <div className="db-pd-card-heading">
+              <h2>Patient record unavailable</h2>
+              <p>{loadError}</p>
+            </div>
+          </div>
+          <div className="db-detail-actions">
+            <button type="button" className="db-back-link" onClick={() => setReloadToken(token => token + 1)}>Try again</button>
+            <Link to="/dashboard/patients" className="db-panel-link">Back to Patient Directory</Link>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  const identity = buildIdentity(patient)
+  const overview = buildOverview(patient)
+  const aiView = ai.summary ? buildSummaryView(ai.summary) : null
+  const meta = `${identity.age} years � ${identity.gender} � ${identity.religion}`
 
   const facts = [
-    { icon: 'id' as IconName, label: 'Patient ID', value: identity ? identity.patientNumber : directory.id },
-    { icon: 'calendar' as IconName, label: 'Date of Birth', value: identity ? identity.dateOfBirth : NOT_AVAILABLE, note: identity ? `(${directory.age} years)` : undefined },
-    { icon: 'phone' as IconName, label: 'Phone', value: identity ? identity.phone : NOT_AVAILABLE },
-    { icon: 'location' as IconName, label: 'Address', value: identity ? identity.address : NOT_AVAILABLE },
+    { icon: 'id' as IconName, label: 'Patient ID', value: identity.patientNumber },
+    { icon: 'calendar' as IconName, label: 'Date of Birth', value: identity.dateOfBirth, note: `(${identity.age} years)` },
+    { icon: 'phone' as IconName, label: 'Phone', value: identity.phone },
+    { icon: 'location' as IconName, label: 'Address', value: identity.address },
   ]
+
+  const exportSummary = () => {
+    if (!ai.summary) return
+    const url = URL.createObjectURL(new Blob([JSON.stringify(ai.summary, null, 2)], { type: 'application/json' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `ai-summary-${patientId}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="db-pd">
@@ -1176,10 +956,10 @@ function PatientDetailPage() {
         <Icon name="chevron" size={14} />
         <span className="db-pd-crumb-current" aria-current="page">Patient Detail</span>
         <span className="db-pd-crumb-actions">
-          <button type="button" className="db-pd-action" onClick={() => openNotice('Editing patient details is not available in this demo.', 'This record renders supplied reference data. Editing needs an approved record workflow and backend.')}>
+          <button type="button" className="db-pd-action" onClick={() => openNotice('Editing patient details is not available.', 'The patient record service does not expose an update endpoint for identity details.')}>
             <Icon name="pencil" size={16} /> Edit Patient
           </button>
-          <button type="button" className="db-pd-action db-pd-action--icon" aria-label="More patient actions" onClick={() => openNotice('More patient actions are not available in this demo.', 'This record renders supplied reference data. Additional actions need an approved workflow and backend.')}>
+          <button type="button" className="db-pd-action db-pd-action--icon" aria-label="More patient actions" onClick={() => openNotice('More patient actions are not available.', 'The patient record service does not expose additional record actions.')}>
             <Icon name="ellipsis" size={18} />
           </button>
         </span>
@@ -1188,12 +968,12 @@ function PatientDetailPage() {
       <div className="db-pd-headcard">
         <section className="db-pd-ident" aria-label="Patient identity">
           <div className="db-pd-ident-photo">
-            <PatientAvatar patient={directory} size={124} />
+            <PatientAvatar src={patient.avatarUrl} name={patient.displayName} size={124} />
           </div>
           <div className="db-pd-ident-main">
             <div className="db-pd-ident-title">
-              <h1>{directory.name}</h1>
-              <span className="db-pd-status-pill">{identity ? identity.status : directory.status}</span>
+              <h1>{patient.displayName}</h1>
+              <span className="db-pd-status-pill">{statusLabel(patient.status)}</span>
             </div>
             <p className="db-pd-meta">{meta}</p>
             <ul className="db-pd-facts" role="list">
@@ -1209,7 +989,7 @@ function PatientDetailPage() {
               ))}
             </ul>
           </div>
-          {identity && (
+          {identity.emergencyContact && (
             <div className="db-pd-emergency">
               <p className="db-pd-emergency-label"><Icon name="emergency" size={18} /> Emergency Contact</p>
               <p className="db-pd-emergency-name">{identity.emergencyContact.name} ({identity.emergencyContact.relation})</p>
@@ -1247,56 +1027,66 @@ function PatientDetailPage() {
         </nav>
       )}
 
-      {tab === 'overview' && isReference && <OverviewPanel overview={REFERENCE_DETAIL.overview} onNotice={openNotice} />}
-      {tab === 'overview' && !isReference && (
-        <section className="db-pd-card" aria-label="Directory fields">
-          <div className="db-pd-card-head"><div className="db-pd-card-heading"><h2>Patient record</h2></div></div>
-          <dl className="db-detail-facts">
-            <div><dt>Patient ID</dt><dd>{directory.id}</dd></div>
-            <div><dt>Age / Gender</dt><dd>{directory.age} years • {directory.gender}</dd></div>
-            <div><dt>Room / Unit</dt><dd>{directory.room} • {directory.unit}</dd></div>
-            <div><dt>Last visit</dt><dd>{directory.lastVisit}</dd></div>
-            <div><dt>Attending doctor</dt><dd>{directory.doctor} · {directory.specialty}</dd></div>
-            <div><dt>Status</dt><dd>{directory.status}</dd></div>
-          </dl>
-          <p className="db-pd-rail-note">Detailed AI Summary, overview, and evidence content is supplied only for the reference patient in this demo.</p>
+      <div role="status" aria-live="polite" className="sr-only">{ai.announcement}</div>
+
+      {tab === 'overview' && <OverviewPanel overview={overview} onNotice={openNotice} />}
+
+      {tab === 'ai-summary' && ai.error && (
+        <div className="db-pd-card" role="alert">
+          <p className="db-pd-rail-note">{ai.error}</p>
+          <div className="db-detail-actions">
+            <button type="button" className="db-back-link" disabled={busy} onClick={() => void ai.load()}>Reload summary</button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'ai-summary' && ai.state === 'loading' && (
+        <section className="db-pd-card" aria-busy="true">
+          <p className="db-pd-rail-note">Loading the stored AI summary�</p>
         </section>
       )}
-      {tab === 'ai-summary' && isReference && section === 'summary' && (
+
+      {tab === 'ai-summary' && ai.state === 'missing' && !ai.error && (
+        <section className="db-pd-card">
+          <div className="db-pd-card-head">
+            <span className="db-pd-card-icon" aria-hidden="true"><Icon name="sparkle" size={20} /></span>
+            <div className="db-pd-card-heading">
+              <h2>No AI summary yet</h2>
+              <p>Generate a summary from this patient's stored source records.</p>
+            </div>
+          </div>
+          <div className="db-detail-actions">
+            <button type="button" className="db-pd-quick-btn db-pd-quick-btn--primary" disabled={busy} onClick={() => void ai.generate(null)}>
+              <Icon name="sparkle" size={18} /> {ai.action === 'generating' ? 'Generating�' : 'Generate Summary'}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && section === 'summary' && (
         <SummaryPanel
           patientId={patientId}
-          claim={resolveActiveClaim(REFERENCE_DETAIL.claims, null)}
+          view={aiView.tab}
+          claim={resolveActiveClaim(aiView.claims, null)}
           onNotice={openNotice}
-          onExport={() => {
-            const summary = REFERENCE_DETAIL.overviewTab
-            const text = [
-              `${summary.summary.heading} — ${summary.summary.status}`,
-              `${summary.summary.generated} • ${summary.summary.sourceNote}`,
-              '',
-              summary.summary.body,
-              '',
-              `Sources: ${summary.sourceGroups.map((group) => `${group.label} (${group.count})`).join(', ')}`,
-            ].join('\n')
-            const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
-            const anchor = document.createElement('a')
-            anchor.href = url
-            anchor.download = `ai-summary-${directory.id}.txt`
-            anchor.click()
-            URL.revokeObjectURL(url)
-          }}
-          reviewed={reviewed}
-          onReview={() => setReviewed((current) => !current)}
+          onExport={exportSummary}
+          reviewed={ai.summary.review.reviewed}
+          onReview={() => void ai.review(!ai.summary?.review.reviewed)}
+          onRefresh={() => void ai.generate(ai.summary?.dataVersion ?? 0)}
           onOpenEvidence={() => { navigate(sectionHref(patientId, 'evidence')) }}
+          busy={busy}
         />
       )}
-      {tab === 'ai-summary' && isReference && section === 'evidence' && <EvidencePanel patientId={patientId} />}
-      {tab === 'ai-summary' && isReference && section === 'data-quality' && <DataQualityPanel onNotice={openNotice} />}
-      {tab === 'ai-summary' && !isReference && (
-        <section className="db-pd-card"><p className="db-pd-rail-note">AI Summary content is supplied only for the reference patient in this demo.</p></section>
+      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && section === 'evidence' && (
+        <EvidencePanel patientId={patientId} claims={aiView.claims} records={aiView.evidence} />
       )}
-      {tab === 'medical-record' && <MedicalRecordPanel patientId={patientId} />}
-      {tab === 'appointments' && <AppointmentsPanel patientId={patientId} />}
-      {tab === 'lab-results' && <LabResultsPanel patientId={patientId} />}
+      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && section === 'data-quality' && (
+        <DataQualityPanel view={aiView} onRefresh={() => void ai.refreshQuality()} busy={busy} />
+      )}
+
+      {tab === 'medical-record' && <TabUnavailable title="Medical Record" />}
+      {tab === 'appointments' && <TabUnavailable title="Appointments" />}
+      {tab === 'lab-results' && <TabUnavailable title="Lab Results" />}
 
       <NoticeDialog notice={notice} onClose={() => setNotice(null)} />
     </div>

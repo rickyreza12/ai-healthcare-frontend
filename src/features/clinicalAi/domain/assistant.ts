@@ -22,6 +22,7 @@ export type AssistantExchange = {
   prompt: string
   answer: AnswerBlock[]
   citations: AssistantSource[]
+  createdAt: string
 }
 
 export type AssistantCatalog = {

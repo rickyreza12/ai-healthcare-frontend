@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ApiError } from '../../../../api.ts'
+import { api, ApiError, type PatientDetail } from '../../../../api.ts'
 import type {
   AnswerBlock,
   AssistantAnswer,
@@ -9,23 +9,11 @@ import type {
   AssistantMode,
   AssistantSource,
 } from '../../domain/assistant.ts'
-import { answerAssistant } from '../../application/operations.ts'
-import { clinicalAiHttpRepository as repository } from '../../infrastructure/clinicalAiApi.ts'
+import { answerAssistant, getAssistantCatalog, getAssistantExchange } from '../../application/operations.ts'
+import { clinicalAiHttpRepository as repository, newIdempotencyKey } from '../../infrastructure/clinicalAiApi.ts'
 import { SourceDialog, type CitationDetail } from '../SourceDialog.tsx'
 import { Glyph, type GlyphKey } from '../../../../dashboard/healthcareAssistant/assistantIcons.tsx'
-import {
-  ASSISTANT_MODES,
-  ASSISTANT_PATIENT,
-  EXCHANGES,
-  GENERAL_SOURCES,
-  KNOWLEDGE_GROUPS,
-  LANDING_SUGGESTIONS,
-  PATIENT_SOURCES,
-  RECENT_CONVERSATIONS,
-  TOPICS,
-} from '../../../../dashboard/healthcareAssistant/assistantData.ts'
 import heroNurse from '../../../../assets/dashboard/healthcare-assistant/assistant_hero_nurse.webp'
-import patientPortrait from '../../../../assets/dashboard/healthcare-assistant/assistant_patient_siti_aisyah.png'
 import doctorAvatar from '../../../../assets/dashboard/avatars/dashboard_doctor_avatar.png'
 import '../../../../dashboard/healthcareAssistant/healthcareAssistant.css'
 import '../clinicalAi.css'
@@ -42,59 +30,29 @@ const GROUP_GLYPHS: Record<string, GlyphKey> = {
   'Medical Education': 'education',
 }
 
-const toSource = (item: typeof GENERAL_SOURCES[number]): AssistantSource => ({
-  sourceId: item.id,
-  marker: item.marker,
-  title: item.title,
-  kind: item.kind,
-  dateLabel: item.date,
-  publisher: item.publisher,
-  summary: item.summary,
-})
-
-const LOCAL_GENERAL_SOURCES = GENERAL_SOURCES.map(toSource)
-const LOCAL_PATIENT_SOURCES = PATIENT_SOURCES.map(toSource)
-const LOCAL_SOURCES = [...LOCAL_GENERAL_SOURCES, ...LOCAL_PATIENT_SOURCES]
-
-const toBlock = (block: typeof EXCHANGES[number]['answer'][number]): AnswerBlock => {
-  switch (block.type) {
-    case 'text': return { ...block }
-    case 'keyPoints': return { ...block, items: block.items.map(item => ({ ...item })) }
-    case 'soap': return { ...block, rows: block.rows.map(row => ({ ...row })) }
-    case 'excerpts': return {
-      ...block,
-      rows: block.rows.map(row => ({ dateLabel: row.date, title: row.title, value: row.value, sourceId: row.sourceId })),
-    }
-  }
-}
-
-const LOCAL_EXCHANGES: AssistantExchange[] = EXCHANGES.map(item => ({
-  exchangeId: item.id,
-  mode: item.mode,
-  prompt: item.prompt,
-  answer: item.answer.map(toBlock),
-  citations: item.citations.map(id => LOCAL_SOURCES.find(source => source.sourceId === id)!),
-}))
-
-const LOCAL_CATALOG: AssistantCatalog = {
-  modes: ASSISTANT_MODES.map(item => ({ ...item })),
-  topics: TOPICS.map(item => ({ ...item })),
-  landingSuggestions: LANDING_SUGGESTIONS.map(item => ({ ...item })),
-  knowledgeGroups: KNOWLEDGE_GROUPS.map(item => ({
-    title: item.title,
-    detail: item.detail,
-    countLabel: `${item.count} sources`,
-  })),
-  recentShortcuts: RECENT_CONVERSATIONS.map(item => ({ title: item.title, exchangeId: item.exchangeId })),
-  patientContext: null,
-  generalSources: LOCAL_GENERAL_SOURCES,
-}
-
 const sourceDetail = (item: AssistantSource): CitationDetail => ({
   title: item.title,
   subtitle: `${item.kind} · ${item.dateLabel}`,
   description: item.summary,
 })
+
+const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })
+
+function timeLabel(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : timeFormat.format(date)
+}
+
+function errorMessage(reason: unknown, fallback: string): string {
+  if (reason instanceof ApiError) {
+    if (reason.status === 401) return 'Your session expired. Sign in again to continue.'
+    if (reason.status === 403) return 'You do not have permission to use the assistant.'
+    if (reason.status === 429) return 'Too many requests. Wait a moment and try again.'
+    if (reason.status === 502 || reason.status === 503) return 'The assistant is temporarily unavailable. Try again shortly.'
+    return reason.message
+  }
+  return reason instanceof Error ? reason.message : fallback
+}
 
 function Spark() {
   return <svg className="ha-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z" /></svg>
@@ -181,46 +139,57 @@ function SourceRail({ sources, related, onSource }: {
 export function HealthcareAssistantLivePage() {
   const [params] = useSearchParams()
   const requestedId = params.get('patientId') ?? ''
+  const [catalog, setCatalog] = useState<AssistantCatalog | null>(null)
+  const [catalogError, setCatalogError] = useState('')
+  const [catalogLoading, setCatalogLoading] = useState(true)
+  const [patient, setPatient] = useState<PatientDetail | null>(null)
   const [view, setView] = useState<AssistantView>(requestedId ? 'patient' : 'landing')
   const [mode, setMode] = useState<AssistantMode>(requestedId ? 'patient' : 'general')
-  const [contextId, setContextId] = useState<string | null>(null)
-  const [contextError, setContextError] = useState('')
   const [draft, setDraft] = useState('')
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null)
+  const [exchange, setExchange] = useState<AssistantExchange | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [source, setSource] = useState<CitationDetail | null>(null)
   const controller = useRef<AbortController | null>(null)
   const submitting = useRef(false)
+  const retry = useRef<{ signature: string; key: string } | null>(null)
 
-  useEffect(() => () => controller.current?.abort(), [])
+  const patientContextId = catalog?.patientContext?.patientId ?? (requestedId || null)
 
   useEffect(() => {
-    if (!requestedId) { setContextId(null); setContextError(''); return }
     const abort = new AbortController()
-    repository.getSummary(requestedId, abort.signal).then(summary => {
-      if (abort.signal.aborted) return
-      if (summary.patientContextId !== requestedId) {
-        setContextError('The patient context does not match the requested patient ID.')
-        setContextId(null)
-      } else {
-        setContextId(summary.patientContextId)
-        setContextError('')
-      }
-    }).catch(reason => {
+    setCatalogLoading(true)
+    getAssistantCatalog(repository, abort.signal).then((next) => {
+      if (!abort.signal.aborted) { setCatalog(next); setCatalogError(''); setCatalogLoading(false) }
+    }).catch((reason) => {
       if (!abort.signal.aborted) {
-        setContextId(null)
-        setContextError(reason instanceof Error ? reason.message : 'Patient context is unavailable.')
+        setCatalogError(errorMessage(reason, 'The assistant catalog could not be loaded.'))
+        setCatalogLoading(false)
       }
     })
     return () => abort.abort()
-  }, [requestedId])
+  }, [])
+
+  useEffect(() => {
+    if (!catalog?.patientContext?.patientId) { setPatient(null); return }
+    const abort = new AbortController()
+    api.patients.get(catalog.patientContext.patientId).then((next) => {
+      if (!abort.signal.aborted) setPatient(next)
+    }).catch(() => {
+      if (!abort.signal.aborted) setPatient(null)
+    })
+    return () => abort.abort()
+  }, [catalog?.patientContext?.patientId])
+
+  useEffect(() => () => controller.current?.abort(), [])
 
   const switchMode = (next: AssistantMode) => {
     controller.current?.abort()
     submitting.current = false
     setBusy(false)
     setAnswer(null)
+    setExchange(null)
     setDraft('')
     setSource(null)
     setMode(next)
@@ -228,21 +197,46 @@ export function HealthcareAssistantLivePage() {
     setMessage(`${next === 'general' ? 'General' : 'Patient'} Assistant selected.`)
   }
 
-  const openExample = (exchangeId: string | null, prompt: string) => {
-    const exchange = LOCAL_EXCHANGES.find(item => item.exchangeId === exchangeId)
-    setMode(exchange?.mode ?? 'general')
-    setView(exchange?.mode ?? 'general')
-    setAnswer(null)
-    setDraft(exchange ? '' : prompt)
-    setMessage(exchange ? 'Showing supplied reference conversations.' : 'Question added to the composer.')
+  const openExample = async (exchangeId: string | null, prompt: string) => {
+    if (!exchangeId) {
+      setDraft(prompt)
+      setMessage('Question added to the composer.')
+      return
+    }
+    controller.current?.abort()
+    const abort = new AbortController()
+    controller.current = abort
+    setBusy(true)
+    setMessage('Loading the recorded answer…')
+    try {
+      const next = await getAssistantExchange(repository, exchangeId, abort.signal)
+      if (abort.signal.aborted) return
+      setMode(next.mode)
+      setView(next.mode)
+      setAnswer(null)
+      setExchange(next)
+      setDraft('')
+      setMessage('Showing a recorded conversation.')
+    } catch (reason) {
+      if (!abort.signal.aborted) setMessage(errorMessage(reason, 'The conversation could not be loaded.'))
+    } finally {
+      if (!abort.signal.aborted) setBusy(false)
+    }
   }
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const requestedExchange = params.get('exchangeId') ?? ''
+  useEffect(() => {
+    if (catalog && requestedExchange) void openExample(requestedExchange, '')
+    // The deep link is applied once the catalog is available.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, requestedExchange])
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {    event.preventDefault()
     const prompt = draft.trim()
     if (!prompt || submitting.current) return
-    if (mode === 'patient' && !contextId) {
-      setMessage('Select an ingested patient summary before asking patient questions.')
+    if (!catalog) return
+    if (mode === 'patient' && !patientContextId) {
+      setMessage('Open the assistant from a patient record to ask patient questions.')
       return
     }
     submitting.current = true
@@ -252,16 +246,19 @@ export function HealthcareAssistantLivePage() {
     setView(mode)
     setBusy(true)
     setAnswer(null)
-    setMessage('Retrieving approved evidence…')
+    setExchange(null)
+    setMessage('Retrieving source-grounded evidence…')
+    const signature = `${mode}|${patientContextId ?? ''}|${prompt}`
+    const key = retry.current?.signature === signature ? retry.current.key : newIdempotencyKey()
+    retry.current = { signature, key }
     try {
-      const value = await answerAssistant(repository, mode, prompt,
-        mode === 'patient' ? contextId ?? undefined : undefined, abort.signal)
+      const value = await answerAssistant(repository, mode, prompt, patientContextId, key, abort.signal)
       if (abort.signal.aborted) return
+      retry.current = null
       setAnswer(value)
       setMessage(value.outcome === 'answered' ? 'Answer ready with citations.' : 'No supported answer was found.')
     } catch (reason) {
-      if (!abort.signal.aborted) setMessage(reason instanceof ApiError && reason.status === 401
-        ? 'Session expired. Sign in again.' : reason instanceof Error ? reason.message : 'Unable to answer.')
+      if (!abort.signal.aborted) setMessage(errorMessage(reason, 'Unable to answer right now.'))
     } finally {
       submitting.current = false
       if (!abort.signal.aborted) setBusy(false)
@@ -275,13 +272,12 @@ export function HealthcareAssistantLivePage() {
     setMessage('Request canceled.')
   }
 
-  const citations = answer?.outcome === 'answered' ? answer.exchange.citations : []
-  const visibleExchanges = answer?.outcome === 'answered'
-    ? [answer.exchange]
-    : LOCAL_EXCHANGES.filter(exchange => exchange.mode === mode)
+  const answeredExchange = answer?.outcome === 'answered' ? answer.exchange : null
+  const visibleExchange = answeredExchange ?? exchange
+  const citations = visibleExchange?.citations ?? []
   const railSources = citations.length
     ? citations
-    : mode === 'general' ? LOCAL_GENERAL_SOURCES : LOCAL_PATIENT_SOURCES
+    : catalog?.generalSources ?? []
   const composer = <form className="ha-composer" onSubmit={event => void submit(event)}>
     <span className="ha-attach" aria-hidden="true"><Glyph name="clip" /></span>
     <label htmlFor="ha-live-prompt" className="sr-only">Ask the healthcare assistant</label>
@@ -289,7 +285,7 @@ export function HealthcareAssistantLivePage() {
       onChange={event => setDraft(event.target.value)}
       placeholder={mode === 'patient' ? 'Ask a question about this patient…' : 'Ask about medical knowledge, guidelines, or hospital procedures…'} />
     {busy ? <button type="button" className="ha-send" onClick={stop}><span className="sr-only">Cancel request</span>×</button> :
-      <button type="submit" className="ha-send" disabled={!draft.trim() || (mode === 'patient' && !contextId)}>
+      <button type="submit" className="ha-send" disabled={!draft.trim() || (mode === 'patient' && !patientContextId)}>
         <Glyph name="send" /><span className="sr-only">Send</span>
       </button>}
     <p className="ha-composer-note" role="status" aria-live="polite"><Glyph name="info" size={14} />
@@ -297,8 +293,40 @@ export function HealthcareAssistantLivePage() {
     </p>
   </form>
 
+  if (catalogLoading) {
+    return <div className="ha-page">
+      <nav className="ha-crumb" aria-label="Breadcrumb"><span aria-hidden="true">›</span><span aria-current="page">Healthcare Assistant</span></nav>
+      <header className="ha-card ha-hero">
+        <Glyph name="sparkles" size={64} className="ha-hero-spark" />
+        <div className="ha-hero-text">
+          <h1>Healthcare Assistant</h1>
+          <p>Your source-grounded clinical companion for medical knowledge and patient-specific questions.</p>
+        </div>
+      </header>
+      <section className="ha-card" aria-busy="true"><p className="ha-muted">Loading the assistant catalog…</p></section>
+    </div>
+  }
+
+  if (!catalog) {
+    return <div className="ha-page">
+      <nav className="ha-crumb" aria-label="Breadcrumb"><span aria-hidden="true">›</span><span aria-current="page">Healthcare Assistant</span></nav>
+      <header className="ha-card ha-hero">
+        <Glyph name="sparkles" size={64} className="ha-hero-spark" />
+        <div className="ha-hero-text">
+          <h1>Healthcare Assistant</h1>
+          <p>Your source-grounded clinical companion for medical knowledge and patient-specific questions.</p>
+        </div>
+      </header>
+      <section className="ha-card" role="alert">
+        <h2>Assistant unavailable</h2>
+        <p className="ha-muted">{catalogError}</p>
+      </section>
+    </div>
+  }
+
   return <div className={`ha-page ha-page--${view}`}>
-    <header className="ha-card ha-hero">
+    <nav className="ha-crumb" aria-label="Breadcrumb"><span aria-hidden="true">›</span><span aria-current="page">Healthcare Assistant</span></nav>
+    <header className={`ha-card ha-hero${view === 'landing' ? '' : ' ha-hero--compact'}`}>
       <Glyph name="sparkles" size={64} className="ha-hero-spark" />
       <div className="ha-hero-text">
         <h1>Healthcare Assistant</h1>
@@ -306,24 +334,31 @@ export function HealthcareAssistantLivePage() {
       </div>
       {view === 'landing' && <img className="ha-hero-art" src={heroNurse} alt="" width={246} height={137} />}
       {view === 'patient' && <section className="ha-patient" aria-label="Selected patient context">
-        <img className="ha-patient-portrait" src={patientPortrait} alt="" width={62} height={62} />
-        <div><h2>{contextId || requestedId ? 'Selected patient' : ASSISTANT_PATIENT.name}</h2>
-          <p>{contextId || requestedId ? <span>ID: {contextId ?? requestedId}</span> : <>
-            <span>ID: {ASSISTANT_PATIENT.patientId}</span><span>{ASSISTANT_PATIENT.age}</span><span>{ASSISTANT_PATIENT.gender}</span></>}</p>
-          {contextError && <p role="alert">{contextError}</p>}</div>
-        {!requestedId && <span className="ha-status">{ASSISTANT_PATIENT.status}</span>}
+        {patient?.avatarUrl
+          ? <img className="ha-patient-portrait" src={patient.avatarUrl} alt="" width={62} height={62} />
+          : <span className="ha-patient-portrait ha-patient-portrait--empty" aria-hidden="true" />}
+        <div>
+          <h2>{patient?.displayName ?? 'Selected patient'}</h2>
+          <p>
+            <span>ID: {patient?.patientNumber ?? patientContextId ?? 'Not selected'}</span>
+            {patient && <span>{patient.age} years</span>}
+            {patient && <span>{patient.gender}</span>}
+          </p>
+          {!patientContextId && <p role="alert">Open the assistant from a patient record to load patient context.</p>}
+        </div>
+        {patient && <span className="ha-status">{patient.status.replace('_', ' ')}</span>}
         <Link className="ha-secondary" to="/dashboard/patients">Change Patient</Link>
       </section>}
-      {view !== 'landing' && <ModeSwitch catalog={LOCAL_CATALOG} mode={mode} onSwitch={switchMode} />}
+      {view !== 'landing' && <ModeSwitch catalog={catalog} mode={mode} onSwitch={switchMode} />}
     </header>
 
     {view === 'landing' ? <div className="ha-layout">
       <div className="ha-main">
-        <ModeSwitch catalog={LOCAL_CATALOG} mode={mode} onSwitch={switchMode} />
+        <ModeSwitch catalog={catalog} mode={mode} onSwitch={switchMode} />
         <section className="ha-card" aria-labelledby="ha-live-topics-title">
           <div className="ha-card-head"><h2 id="ha-live-topics-title" className="ha-section-title">Try asking about:</h2></div>
-          <ul className="ha-topics">{LOCAL_CATALOG.topics.map(topic => <li key={topic.title}>
-            <button type="button" className="ha-topic" onClick={() => openExample(topic.exchangeId, topic.example)}>
+          <ul className="ha-topics">{catalog.topics.map(topic => <li key={topic.title}>
+            <button type="button" className="ha-topic" onClick={() => void openExample(topic.exchangeId, topic.example)}>
               <span className="ha-round-icon"><Glyph name={GROUP_GLYPHS[topic.title] ?? 'document'} size={18} /></span>
               <span className="ha-topic-title">{topic.title}</span><span className="ha-topic-example">“{topic.example}”</span>
             </button>
@@ -332,11 +367,11 @@ export function HealthcareAssistantLivePage() {
         <section className="ha-card ha-welcome-card" aria-labelledby="ha-live-suggested-title">
           <div className="ha-welcome"><span className="ha-welcome-spark"><Glyph name="sparkles" size={26} /></span>
             <div className="ha-welcome-bubble"><p>Welcome to BUNDA's Healthcare Assistant.</p>
-              <p>Ask about approved medical knowledge, clinical guidance, hospital procedures, or an ingested patient's records.</p></div>
+              <p>Ask about approved medical knowledge, clinical guidance, hospital procedures, or this patient's records.</p></div>
           </div>
           <h2 id="ha-live-suggested-title" className="ha-subtitle">Suggested questions</h2>
-          <ul className="ha-suggestions">{LOCAL_CATALOG.landingSuggestions.map(item => <li key={item.label}>
-            <button type="button" className="ha-suggestion" onClick={() => openExample(item.exchangeId, item.label)}>
+          <ul className="ha-suggestions">{catalog.landingSuggestions.map(item => <li key={item.label}>
+            <button type="button" className="ha-suggestion" onClick={() => void openExample(item.exchangeId, item.label)}>
               <span className="ha-arrow-tile"><Glyph name="arrow" size={14} /></span>
               <span className="ha-suggestion-label">{item.label}</span><Glyph name="chevron" size={16} />
             </button>
@@ -347,7 +382,7 @@ export function HealthcareAssistantLivePage() {
       <div className="ha-side">
         <section className="ha-card" aria-labelledby="ha-live-knowledge-title">
           <div className="ha-card-head"><h2 id="ha-live-knowledge-title" className="ha-section-title"><Glyph name="kit" /> Knowledge Sources</h2></div>
-          <ul className="ha-knowledge">{LOCAL_CATALOG.knowledgeGroups.map(group => <li key={group.title}>
+          <ul className="ha-knowledge">{catalog.knowledgeGroups.map(group => <li key={group.title}>
             <span className="ha-icon-tile ha-knowledge-icon"><Glyph name={GROUP_GLYPHS[group.title] ?? 'document'} /></span>
             <span className="ha-knowledge-title">{group.title}</span><span className="ha-muted">{group.detail}</span>
             <span className="ha-count">{group.countLabel}</span>
@@ -355,8 +390,8 @@ export function HealthcareAssistantLivePage() {
         </section>
         <section className="ha-card" aria-labelledby="ha-live-recent-title">
           <div className="ha-card-head"><h2 id="ha-live-recent-title" className="ha-section-title"><span className="ha-head-chat"><Glyph name="chat" size={16} /></span> Recent Conversations</h2></div>
-          <ul className="ha-recent">{LOCAL_CATALOG.recentShortcuts.map(item => <li key={item.title}>
-            <button type="button" className="ha-recent-item" onClick={() => openExample(item.exchangeId, item.title)}>
+          <ul className="ha-recent">{catalog.recentShortcuts.map(item => <li key={item.title}>
+            <button type="button" className="ha-recent-item" onClick={() => void openExample(item.exchangeId, item.title)}>
               <Glyph name="chat" className="ha-recent-icon" /><span className="ha-recent-title">{item.title}</span>
               <Glyph name="chevron" size={16} className="ha-recent-chevron" />
             </button>
@@ -368,28 +403,32 @@ export function HealthcareAssistantLivePage() {
       </div>
     </div> : <div className="ha-layout ha-layout--conversation">
       <section className="ha-card ha-conversation" aria-label={`${mode === 'general' ? 'General' : 'Patient'} Assistant conversation`}>
-        <ol className="ha-exchanges">{visibleExchanges.map((exchange, index) => <li className="ha-exchange" key={exchange.exchangeId}>
-          <div className="ha-question-row"><div className="ha-question"><span className="sr-only">You asked: </span>{exchange.prompt}
-            <span className="ha-time">{index ? '10:26 AM' : '10:24 AM'}</span></div>
+        {visibleExchange ? <ol className="ha-exchanges"><li className="ha-exchange" key={visibleExchange.exchangeId}>
+          <div className="ha-question-row"><div className="ha-question"><span className="sr-only">You asked: </span>{visibleExchange.prompt}
+            <span className="ha-time">{timeLabel(visibleExchange.createdAt)}</span></div>
             <img className="ha-avatar" src={doctorAvatar} alt="" width={32} height={32} /></div>
           <article className="ha-answer" aria-label="Assistant response"><Spark /><div className="ha-answer-body">
-            <AnswerBlocks blocks={exchange.answer} sources={exchange.citations} onSource={item => setSource(sourceDetail(item))} />
-            <ul className="ha-cites">{exchange.citations.map(item => <li key={item.sourceId}><button type="button" className="ha-cite"
+            <AnswerBlocks blocks={visibleExchange.answer} sources={visibleExchange.citations} onSource={item => setSource(sourceDetail(item))} />
+            <ul className="ha-cites">{visibleExchange.citations.map(item => <li key={item.sourceId}><button type="button" className="ha-cite"
               onClick={() => setSource(sourceDetail(item))}>{item.marker} {item.kind}</button></li>)}</ul>
-            <span className="ha-time">{index ? '10:26 AM' : '10:24 AM'}</span>
+            <span className="ha-time">{timeLabel(visibleExchange.createdAt)}</span>
           </div></article>
-        </li>)}</ol>
+        </li></ol> : <div className="ha-keypoints" role="status">
+          <h2>No conversation open</h2>
+          <p>{mode === 'patient' && !patientContextId
+            ? 'Open the assistant from a patient record to load patient context.'
+            : 'Ask a question below, or pick a suggested question from the landing page.'}</p>
+        </div>}
         {answer?.outcome === 'unsupported' && <div className="ha-keypoints" role="status"><h2>Unsupported question</h2>
-          <p>This question is not available in the approved evidence collection. No answer was generated.</p></div>}
+          <p>{answer.reason} No answer was generated.</p></div>}
         <div className="ha-prompts" role="group" aria-label="Suggested prompts">
           <span className="ha-prompts-label">Suggested prompts:</span>
-          {(mode === 'general' ? ['Explain a medical condition', 'ICD-10 coding help', 'SOAP documentation', 'Clinical guidelines'] :
-            ['Latest lab results', 'Current medications', 'Fetal growth trend', 'Upcoming appointments']).map(prompt =>
-            <button key={prompt} type="button" className="ha-chip" onClick={() => setDraft(prompt)}>{prompt}</button>)}
+          {catalog.landingSuggestions.map(item =>
+            <button key={item.label} type="button" className="ha-chip" onClick={() => setDraft(item.label)}>{item.label}</button>)}
         </div>
         {composer}
       </section>
-      <SourceRail sources={railSources} related={mode === 'patient' ? 'Why is hypertension flagged?' : undefined}
+      <SourceRail sources={railSources} related={visibleExchange?.prompt}
         onSource={item => setSource(sourceDetail(item))} />
     </div>}
     <SourceDialog source={source} onClose={() => setSource(null)} />
