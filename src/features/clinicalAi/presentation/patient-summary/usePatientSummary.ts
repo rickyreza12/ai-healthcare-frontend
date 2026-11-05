@@ -36,6 +36,7 @@ export function usePatientSummary(patientId: string) {
   const [action, setAction] = useState<ActionState>('idle')
   const [error, setError] = useState('')
   const [announcement, setAnnouncement] = useState('')
+  const [autoTried, setAutoTried] = useState('')
   const controller = useRef<AbortController | null>(null)
   const busy = useRef(false)
   const pendingKeys = useRef<Record<ActionState, string | null>>({ idle: null, generating: null, reviewing: null, refreshing: null })
@@ -163,5 +164,17 @@ export function usePatientSummary(patientId: string) {
     setAnnouncement('Operation canceled.')
   }
 
-  return { summary, state, action, error, announcement, load, generate, review, refreshQuality, cancel }
+  // A patient with no saved summary is generated once automatically; a failure leaves the manual button.
+  useEffect(() => {
+    if (state !== 'missing' || error || autoTried === patientId) return
+    setAutoTried(patientId)
+    void generate(null)
+  })
+
+  const autoPending = state === 'missing' && !error && autoTried !== patientId
+  const phase: 'checking' | 'generating' | 'idle' = state === 'loading'
+    ? 'checking'
+    : action === 'generating' || autoPending ? 'generating' : 'idle'
+
+  return { summary, state, phase, action, error, announcement, load, generate, review, refreshQuality, cancel }
 }

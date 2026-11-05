@@ -4,6 +4,7 @@ import { useAuth } from '../auth.tsx'
 import { DOCTOR, RECENT_PATIENTS, TODAYS_APPOINTMENTS } from './dashboardData.ts'
 import { searchFixtures } from './dashboardLogic.ts'
 import { AVATARS } from './dashboardAssets.ts'
+import nurseAvatar from '../assets/login/nurse.png'
 import { useDismissible } from './useDismissible.ts'
 import { DIRECTORY_PATIENTS } from './patients/patientDirectoryData.ts'
 import { MEDICAL_RECORDS } from './medicalRecords/medicalRecordData.ts'
@@ -60,9 +61,10 @@ export function DashboardTopbar() {
   // The pediatric workspace carries its own clinician identity in the shared top bar.
   // The global DOCTOR identity is never overwritten; it stays for every other route.
   const isPediatric = location.pathname === '/dashboard/pediatric'
-  const topbarName = isPediatric ? 'Dr. Siti Aisyah' : DOCTOR.name
-  const topbarRole = isPediatric ? 'General Pediatrician' : DOCTOR.role
-  const topbarAvatar = isPediatric ? AVATARS.sitiAisyah : AVATARS[DOCTOR.avatar]
+  const isNurse = user?.role === 'nurse'
+  const topbarName = isNurse ? 'Nurse' : isPediatric ? 'Dr. Siti Aisyah' : DOCTOR.name
+  const topbarRole = isNurse ? 'Nursing Staff' : isPediatric ? 'General Pediatrician' : DOCTOR.role
+  const topbarAvatar = isNurse ? nurseAvatar : isPediatric ? AVATARS.sitiAisyah : AVATARS[DOCTOR.avatar]
 
   // Each workspace reference gives the shared search field its own scope.
   const searchPlaceholder = location.pathname === '/dashboard/pharmacy'
@@ -182,7 +184,7 @@ export function DashboardTopbar() {
           aria-expanded={profileOpen}
           onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false); setSearchOpen(false) }}
         >
-          <img src={topbarAvatar} alt="" width={44} height={44} className="db-topbar-avatar" />
+          <img src={topbarAvatar} alt="" width={44} height={44} className={isNurse ? 'db-topbar-avatar db-topbar-avatar--nurse' : 'db-topbar-avatar'} />
           <span className="db-topbar-identity">
             <span className="db-topbar-name">{topbarName}</span>
             <span className="db-topbar-role">{topbarRole}</span>

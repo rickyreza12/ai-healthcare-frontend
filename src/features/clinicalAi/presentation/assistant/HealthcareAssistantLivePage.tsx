@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, ApiError, type PatientDetail } from '../../../../api.ts'
+import { api, ApiError, type Patient, type PatientDetail } from '../../../../api.ts'
+import { PatientPicker } from './PatientPicker.tsx'
 import type {
   AnswerBlock,
-  AssistantAnswer,
   AssistantCatalog,
   AssistantExchange,
   AssistantMode,
@@ -12,6 +12,9 @@ import type {
 import { answerAssistant, getAssistantCatalog, getAssistantExchange } from '../../application/operations.ts'
 import { clinicalAiHttpRepository as repository, newIdempotencyKey } from '../../infrastructure/clinicalAiApi.ts'
 import { SourceDialog, type CitationDetail } from '../SourceDialog.tsx'
+import { ClinicalAiLoader } from '../ClinicalAiLoader.tsx'
+import { PatientAvatar } from '../../../../dashboard/patients/PatientDirectoryPage.tsx'
+import { detailHref } from '../../../../dashboard/patients/patientDetailLogic.ts'
 import { Glyph, type GlyphKey } from '../../../../dashboard/healthcareAssistant/assistantIcons.tsx'
 import heroNurse from '../../../../assets/dashboard/healthcare-assistant/assistant_hero_nurse.webp'
 import doctorAvatar from '../../../../assets/dashboard/avatars/dashboard_doctor_avatar.png'
@@ -19,6 +22,12 @@ import '../../../../dashboard/healthcareAssistant/healthcareAssistant.css'
 import '../clinicalAi.css'
 
 type AssistantView = 'landing' | AssistantMode
+
+const HERO_COPY: Record<AssistantView, string> = {
+  landing: 'Your AI assistant for medical knowledge, clinical guidelines, and patient information. Get reliable, source-grounded answers from trusted healthcare data.',
+  general: 'Your AI-powered assistant for healthcare knowledge, clinical guidelines, coding, documentation, and general medical information.',
+  patient: "Ask questions about the selected patient's EMR, diagnoses, medication history, SOAP notes, labs, and visits.",
+}
 
 const GROUP_GLYPHS: Record<string, GlyphKey> = {
   'Medical Terminology': 'book',
@@ -56,6 +65,12 @@ function errorMessage(reason: unknown, fallback: string): string {
 
 function Spark() {
   return <svg className="ha-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z" /></svg>
+}
+
+const DISCLAIMER: Record<AssistantView, string> = {
+  landing: 'Answers are generated from trusted medical sources, clinical guidelines, and hospital documentation. Please verify critical information before making clinical decisions.',
+  general: 'This assistant provides general healthcare information for educational purposes only. Always verify information and use clinical judgment for patient care decisions.',
+  patient: "Answers are generated from the patient's medical records and are for clinical support only. Always verify information before making clinical decisions.",
 }
 
 function AnswerBlocks({ blocks, sources, onSource }: {
@@ -112,14 +127,20 @@ function ModeSwitch({ catalog, mode, onSwitch }: {
   </div>
 }
 
-function SourceRail({ sources, related, onSource }: {
+function SourceRail({ sources, related, onSource, onClose }: {
   sources: AssistantSource[]
   related?: string
   onSource: (source: AssistantSource) => void
+  onClose: () => void
 }) {
   return <aside className="ha-card ha-sources" aria-labelledby="ha-live-sources-title">
-    <h2 id="ha-live-sources-title">Sources &amp; Citations</h2>
-    <p className="ha-muted">Only sources supplied by the BUNDA backend are displayed.</p>
+    <div className="ha-sources-head">
+      <h2 id="ha-live-sources-title">Sources &amp; Citations <Glyph name="info" size={16} className="ha-sources-info" /></h2>
+      <button type="button" className="ha-sources-close" onClick={onClose}>
+        <span aria-hidden="true">×</span><span className="sr-only">Close sources</span>
+      </button>
+    </div>
+    <p className="ha-muted">Evidence and references used to generate the assistant's response. Click on an item to view full details.</p>
     {related && <h3 className="ha-sources-related">Related to: {related}</h3>}
     {!sources.length && <p className="ha-muted">No cited sources for the current response.</p>}
     <ul className="ha-source-list">{sources.map(item => <li key={item.sourceId}>
@@ -137,25 +158,32 @@ function SourceRail({ sources, related, onSource }: {
 }
 
 export function HealthcareAssistantLivePage() {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
+  const [pickerOpen, setPickerOpen] = useState(false)
   const requestedId = params.get('patientId') ?? ''
   const [catalog, setCatalog] = useState<AssistantCatalog | null>(null)
   const [catalogError, setCatalogError] = useState('')
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [patient, setPatient] = useState<PatientDetail | null>(null)
-  const [view, setView] = useState<AssistantView>(requestedId ? 'patient' : 'landing')
   const [mode, setMode] = useState<AssistantMode>(requestedId ? 'patient' : 'general')
   const [draft, setDraft] = useState('')
-  const [answer, setAnswer] = useState<AssistantAnswer | null>(null)
-  const [exchange, setExchange] = useState<AssistantExchange | null>(null)
+  const [messages, setMessages] = useState<AssistantExchange[]>([])
+  const [unsupported, setUnsupported] = useState('')
+  const [pendingPrompt, setPendingPrompt] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [source, setSource] = useState<CitationDetail | null>(null)
   const controller = useRef<AbortController | null>(null)
   const submitting = useRef(false)
   const retry = useRef<{ signature: string; key: string } | null>(null)
+  const thread = useRef<HTMLDivElement | null>(null)
+  const [railOpen, setRailOpen] = useState(true)
+  const [failure, setFailure] = useState<{ prompt: string; text: string } | null>(null)
 
   const patientContextId = catalog?.patientContext?.patientId ?? (requestedId || null)
+  // Idle (no questions) shows the landing layout; any question, error or pending answer opens the conversation.
+  const hasThread = messages.length > 0 || Boolean(pendingPrompt) || failure !== null || Boolean(unsupported)
+  const view: AssistantView = hasThread ? mode : 'landing'
 
   useEffect(() => {
     const abort = new AbortController()
@@ -172,15 +200,15 @@ export function HealthcareAssistantLivePage() {
   }, [])
 
   useEffect(() => {
-    if (!catalog?.patientContext?.patientId) { setPatient(null); return }
+    if (!patientContextId) { setPatient(null); return }
     const abort = new AbortController()
-    api.patients.get(catalog.patientContext.patientId).then((next) => {
+    api.patients.get(patientContextId).then((next) => {
       if (!abort.signal.aborted) setPatient(next)
     }).catch(() => {
       if (!abort.signal.aborted) setPatient(null)
     })
     return () => abort.abort()
-  }, [catalog?.patientContext?.patientId])
+  }, [patientContextId])
 
   useEffect(() => () => controller.current?.abort(), [])
 
@@ -188,13 +216,39 @@ export function HealthcareAssistantLivePage() {
     controller.current?.abort()
     submitting.current = false
     setBusy(false)
-    setAnswer(null)
-    setExchange(null)
+    setPendingPrompt('')
+    setUnsupported('')
     setDraft('')
     setSource(null)
     setMode(next)
-    setView(next)
     setMessage(`${next === 'general' ? 'General' : 'Patient'} Assistant selected.`)
+  }
+
+  const removeMessage = (exchangeId: string) => {
+    setMessages(current => current.filter(item => item.exchangeId !== exchangeId))
+    setMessage('Question removed.')
+  }
+
+  const clearConversation = () => {
+    controller.current?.abort()
+    submitting.current = false
+    setBusy(false)
+    setMessages([])
+    setPendingPrompt('')
+    setUnsupported('')
+    setFailure(null)
+    setSource(null)
+    setMessage('Conversation cleared.')
+  }
+
+  const choosePatient = (next: Patient) => {
+    setPickerOpen(false)
+    if (next.patientId === patientContextId) return
+    clearConversation()
+    setPatient(null)
+    setMode('patient')
+    setParams({ patientId: next.patientId })
+    setMessage(`Patient context set to ${next.displayName}.`)
   }
 
   const openExample = async (exchangeId: string | null, prompt: string) => {
@@ -212,9 +266,10 @@ export function HealthcareAssistantLivePage() {
       const next = await getAssistantExchange(repository, exchangeId, abort.signal)
       if (abort.signal.aborted) return
       setMode(next.mode)
-      setView(next.mode)
-      setAnswer(null)
-      setExchange(next)
+      setUnsupported('')
+      setFailure(null)
+      setPendingPrompt('')
+      setMessages(current => current.some(item => item.exchangeId === next.exchangeId) ? current : [...current, next])
       setDraft('')
       setMessage('Showing a recorded conversation.')
     } catch (reason) {
@@ -243,10 +298,11 @@ export function HealthcareAssistantLivePage() {
     controller.current?.abort()
     const abort = new AbortController()
     controller.current = abort
-    setView(mode)
     setBusy(true)
-    setAnswer(null)
-    setExchange(null)
+    setUnsupported('')
+    setFailure(null)
+    setPendingPrompt(prompt)
+    setDraft('')
     setMessage('Retrieving source-grounded evidence…')
     const signature = `${mode}|${patientContextId ?? ''}|${prompt}`
     const key = retry.current?.signature === signature ? retry.current.key : newIdempotencyKey()
@@ -255,13 +311,23 @@ export function HealthcareAssistantLivePage() {
       const value = await answerAssistant(repository, mode, prompt, patientContextId, key, abort.signal)
       if (abort.signal.aborted) return
       retry.current = null
-      setAnswer(value)
-      setMessage(value.outcome === 'answered' ? 'Answer ready with citations.' : 'No supported answer was found.')
+      if (value.outcome === 'answered') {
+        setMessages(current => [...current, value.exchange])
+        setUnsupported('')
+        setMessage('Answer ready with citations.')
+      } else {
+        setUnsupported(value.reason)
+        setMessage('No supported answer was found.')
+      }
     } catch (reason) {
-      if (!abort.signal.aborted) setMessage(errorMessage(reason, 'Unable to answer right now.'))
+      if (!abort.signal.aborted) {
+        const text = errorMessage(reason, 'Unable to answer right now.')
+        setMessage(text)
+        setFailure({ prompt, text })
+      }
     } finally {
       submitting.current = false
-      if (!abort.signal.aborted) setBusy(false)
+      if (!abort.signal.aborted) { setBusy(false); setPendingPrompt('') }
     }
   }
 
@@ -269,15 +335,20 @@ export function HealthcareAssistantLivePage() {
     controller.current?.abort()
     submitting.current = false
     setBusy(false)
+    setPendingPrompt('')
     setMessage('Request canceled.')
   }
 
-  const answeredExchange = answer?.outcome === 'answered' ? answer.exchange : null
-  const visibleExchange = answeredExchange ?? exchange
-  const citations = visibleExchange?.citations ?? []
+  const latest = messages.length ? messages[messages.length - 1] : null
+  const citations = latest?.citations ?? []
   const railSources = citations.length
     ? citations
     : catalog?.generalSources ?? []
+
+  useEffect(() => {
+    const el = thread.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages.length, pendingPrompt, failure, unsupported])
   const composer = <form className="ha-composer" onSubmit={event => void submit(event)}>
     <span className="ha-attach" aria-hidden="true"><Glyph name="clip" /></span>
     <label htmlFor="ha-live-prompt" className="sr-only">Ask the healthcare assistant</label>
@@ -288,9 +359,8 @@ export function HealthcareAssistantLivePage() {
       <button type="submit" className="ha-send" disabled={!draft.trim() || (mode === 'patient' && !patientContextId)}>
         <Glyph name="send" /><span className="sr-only">Send</span>
       </button>}
-    <p className="ha-composer-note" role="status" aria-live="polite"><Glyph name="info" size={14} />
-      {message || 'Answers use approved backend evidence and show supplied citations.'}
-    </p>
+    <p className="sr-only" role="status" aria-live="polite">{message}</p>
+    <p className="ha-composer-note"><Glyph name="info" size={14} />{DISCLAIMER[view]}</p>
   </form>
 
   if (catalogLoading) {
@@ -303,7 +373,7 @@ export function HealthcareAssistantLivePage() {
           <p>Your source-grounded clinical companion for medical knowledge and patient-specific questions.</p>
         </div>
       </header>
-      <section className="ha-card" aria-busy="true"><p className="ha-muted">Loading the assistant catalog…</p></section>
+      <section className="ha-card"><ClinicalAiLoader label="Loading the assistant" detail="Fetching modes, sources, and recent conversations." /></section>
     </div>
   }
 
@@ -324,37 +394,46 @@ export function HealthcareAssistantLivePage() {
     </div>
   }
 
+  const patientCard = (
+    <section className="ha-patient" aria-label="Selected patient context">
+      {patientContextId && <Link className="ha-patient-link" to={detailHref(patientContextId, 'ai-summary')}
+        aria-label={`Open ${patient?.displayName ?? 'selected patient'} AI summary`}>
+        <PatientAvatar src={patient?.avatarUrl} name={patient?.displayName ?? 'Patient'} size={62} />
+      </Link>}
+      <div>
+        <h2>{patientContextId
+          ? <Link className="ha-patient-link" to={detailHref(patientContextId, 'ai-summary')}>{patient?.displayName ?? 'Selected patient'}</Link>
+          : 'Selected patient'}</h2>
+        <p>
+          <span>{patient ? `ID: ${patient.patientNumber}` : patientContextId ? 'Loading patient…' : 'Not selected'}</span>
+          {patient && <span>{patient.age} years</span>}
+          {patient && <span>{patient.gender}</span>}
+        </p>
+        {!patientContextId && <p role="alert">Select a patient to load patient context.</p>}
+      </div>
+      {patient && <span className="ha-status">{patient.status.replace('_', ' ')}</span>}
+      <button type="button" className="ha-secondary" onClick={() => setPickerOpen(true)}>
+          {patientContextId ? 'Change Patient' : 'Select Patient'}</button>
+    </section>
+  )
+
   return <div className={`ha-page ha-page--${view}`}>
     <nav className="ha-crumb" aria-label="Breadcrumb"><span aria-hidden="true">›</span><span aria-current="page">Healthcare Assistant</span></nav>
     <header className={`ha-card ha-hero${view === 'landing' ? '' : ' ha-hero--compact'}`}>
       <Glyph name="sparkles" size={64} className="ha-hero-spark" />
       <div className="ha-hero-text">
         <h1>Healthcare Assistant</h1>
-        <p>Your source-grounded clinical companion for medical knowledge and patient-specific questions.</p>
+        <p>{HERO_COPY[view]}</p>
       </div>
       {view === 'landing' && <img className="ha-hero-art" src={heroNurse} alt="" width={246} height={137} />}
-      {view === 'patient' && <section className="ha-patient" aria-label="Selected patient context">
-        {patient?.avatarUrl
-          ? <img className="ha-patient-portrait" src={patient.avatarUrl} alt="" width={62} height={62} />
-          : <span className="ha-patient-portrait ha-patient-portrait--empty" aria-hidden="true" />}
-        <div>
-          <h2>{patient?.displayName ?? 'Selected patient'}</h2>
-          <p>
-            <span>ID: {patient?.patientNumber ?? patientContextId ?? 'Not selected'}</span>
-            {patient && <span>{patient.age} years</span>}
-            {patient && <span>{patient.gender}</span>}
-          </p>
-          {!patientContextId && <p role="alert">Open the assistant from a patient record to load patient context.</p>}
-        </div>
-        {patient && <span className="ha-status">{patient.status.replace('_', ' ')}</span>}
-        <Link className="ha-secondary" to="/dashboard/patients">Change Patient</Link>
-      </section>}
-      {view !== 'landing' && <ModeSwitch catalog={catalog} mode={mode} onSwitch={switchMode} />}
+      {view === 'patient' && patientCard}
     </header>
+    {view !== 'landing' && <ModeSwitch catalog={catalog} mode={mode} onSwitch={switchMode} />}
 
     {view === 'landing' ? <div className="ha-layout">
       <div className="ha-main">
         <ModeSwitch catalog={catalog} mode={mode} onSwitch={switchMode} />
+        {mode === 'patient' && patientCard}
         <section className="ha-card" aria-labelledby="ha-live-topics-title">
           <div className="ha-card-head"><h2 id="ha-live-topics-title" className="ha-section-title">Try asking about:</h2></div>
           <ul className="ha-topics">{catalog.topics.map(topic => <li key={topic.title}>
@@ -401,36 +480,59 @@ export function HealthcareAssistantLivePage() {
           <h2>Reliable &amp; Source-Grounded</h2><p>Answers use approved backend evidence and retain their source citations.</p>
         </div></section>
       </div>
-    </div> : <div className="ha-layout ha-layout--conversation">
+    </div> : <div className={`ha-layout ha-layout--conversation${railOpen ? '' : ' ha-layout--rail-closed'}`}>
       <section className="ha-card ha-conversation" aria-label={`${mode === 'general' ? 'General' : 'Patient'} Assistant conversation`}>
-        {visibleExchange ? <ol className="ha-exchanges"><li className="ha-exchange" key={visibleExchange.exchangeId}>
-          <div className="ha-question-row"><div className="ha-question"><span className="sr-only">You asked: </span>{visibleExchange.prompt}
-            <span className="ha-time">{timeLabel(visibleExchange.createdAt)}</span></div>
+        <div className="ha-thread" ref={thread} tabIndex={0} aria-label="Conversation messages">
+        {messages.length ? <ol className="ha-exchanges">{messages.map(item => <li className="ha-exchange" key={item.exchangeId}>
+          <div className="ha-question-row">
+            <button type="button" className="ha-remove" onClick={() => removeMessage(item.exchangeId)}>
+              <span aria-hidden="true">×</span><span className="sr-only">Remove this question and answer</span>
+            </button>
+            <div className="ha-question"><span className="sr-only">You asked: </span>{item.prompt}
+            <span className="ha-time">{timeLabel(item.createdAt)}</span></div>
             <img className="ha-avatar" src={doctorAvatar} alt="" width={32} height={32} /></div>
           <article className="ha-answer" aria-label="Assistant response"><Spark /><div className="ha-answer-body">
-            <AnswerBlocks blocks={visibleExchange.answer} sources={visibleExchange.citations} onSource={item => setSource(sourceDetail(item))} />
-            <ul className="ha-cites">{visibleExchange.citations.map(item => <li key={item.sourceId}><button type="button" className="ha-cite"
-              onClick={() => setSource(sourceDetail(item))}>{item.marker} {item.kind}</button></li>)}</ul>
-            <span className="ha-time">{timeLabel(visibleExchange.createdAt)}</span>
+            <AnswerBlocks blocks={item.answer} sources={item.citations} onSource={source => setSource(sourceDetail(source))} />
+            <ul className="ha-cites">{item.citations.map(source => <li key={source.sourceId}><button type="button" className="ha-cite"
+              onClick={() => setSource(sourceDetail(source))}>{source.marker} {source.kind}</button></li>)}</ul>
+            <span className="ha-time">{timeLabel(item.createdAt)}</span>
           </div></article>
-        </li></ol> : <div className="ha-keypoints" role="status">
-          <h2>No conversation open</h2>
+        </li>)}</ol> : <div className="ha-keypoints" role="status">
+          <h2>No messages yet</h2>
           <p>{mode === 'patient' && !patientContextId
             ? 'Open the assistant from a patient record to load patient context.'
             : 'Ask a question below, or pick a suggested question from the landing page.'}</p>
         </div>}
-        {answer?.outcome === 'unsupported' && <div className="ha-keypoints" role="status"><h2>Unsupported question</h2>
-          <p>{answer.reason} No answer was generated.</p></div>}
+        {pendingPrompt && <div className="ha-exchange ha-exchange--pending" role="status" aria-live="polite">
+          <div className="ha-question-row"><div className="ha-question"><span className="sr-only">You asked: </span>{pendingPrompt}
+            <span className="ha-time">{timeLabel(new Date().toISOString())}</span></div>
+            <img className="ha-avatar" src={doctorAvatar} alt="" width={32} height={32} /></div>
+          <article className="ha-answer" aria-label="Assistant is answering"><Spark /><div className="ha-answer-body">
+            <p className="ha-muted">Retrieving source-grounded evidence…</p>
+            <div className="clinical-loader-bar ha-pending-bar" aria-hidden="true"><span /></div>
+          </div></article>
+        </div>}
+        {unsupported && <div className="ha-keypoints" role="status"><h2>Unsupported question</h2>
+          <p>{unsupported} No answer was generated.</p></div>}
+        {failure && <div className="ha-exchange">
+          <div className="ha-question-row"><div className="ha-question"><span className="sr-only">You asked: </span>{failure.prompt}</div>
+            <img className="ha-avatar" src={doctorAvatar} alt="" width={32} height={32} /></div>
+          <div className="ha-keypoints" role="alert"><h2>Question not answered</h2><p>{failure.text}</p></div>
+        </div>}
+        </div>
         <div className="ha-prompts" role="group" aria-label="Suggested prompts">
           <span className="ha-prompts-label">Suggested prompts:</span>
           {catalog.landingSuggestions.map(item =>
             <button key={item.label} type="button" className="ha-chip" onClick={() => setDraft(item.label)}>{item.label}</button>)}
+          <button type="button" className="ha-chip ha-chip--clear" onClick={clearConversation}>Clear conversation</button>
+          {!railOpen && <button type="button" className="ha-chip" onClick={() => setRailOpen(true)}>Show sources</button>}
         </div>
         {composer}
       </section>
-      <SourceRail sources={railSources} related={visibleExchange?.prompt}
-        onSource={item => setSource(sourceDetail(item))} />
+      {railOpen && <SourceRail sources={railSources} related={latest?.prompt}
+        onSource={item => setSource(sourceDetail(item))} onClose={() => setRailOpen(false)} />}
     </div>}
     <SourceDialog source={source} onClose={() => setSource(null)} />
+    <PatientPicker open={pickerOpen} currentId={patientContextId} onSelect={choosePatient} onClose={() => setPickerOpen(false)} />
   </div>
 }

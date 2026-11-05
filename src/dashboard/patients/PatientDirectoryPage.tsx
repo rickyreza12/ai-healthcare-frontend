@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, ApiError, type Patient, type PatientPage, type PatientStatus } from '../../api.ts'
+import { api, ApiError, type FieldError, type Patient, type PatientCreate, type PatientPage, type PatientStatus } from '../../api.ts'
+import { useAuth } from '../../auth.tsx'
 import { slugify } from '../dashboardData.ts'
 import { DirectoryStatusBadge } from '../DashboardPrimitives.tsx'
 import { DIRECTORY_TABS, type DirectoryStatus } from './patientDirectoryData.ts'
@@ -132,8 +133,10 @@ function FilterField({ label, icon, children }: { label: string; icon: ReactNode
 
 function PatientDirectoryPage() {
   const [filters, setFilters] = useState<DirectoryFilters>(DEFAULT_FILTERS)
+  const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<readonly string[]>([])
   const [addOpen, setAddOpen] = useState(false)
+  const [createdMessage, setCreatedMessage] = useState('')
   const [page, setPage] = useState(1)
   const [data, setData] = useState<PatientPage | null>(null)
   const [loading, setLoading] = useState(true)
@@ -146,12 +149,14 @@ function PatientDirectoryPage() {
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null)
   const addTitleId = useId()
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   useEffect(() => {
     const abort = new AbortController()
     setLoading(true)
     setError('')
     api.patients.list({
+      q: query.trim() || undefined,
       status: filters.status === ALL_STATUSES ? undefined : filters.status,
       department: filters.department === ALL_DEPARTMENTS ? undefined : filters.department,
       visitDate: filters.visitDate === ALL_DATES ? undefined : filters.visitDate,
@@ -171,7 +176,7 @@ function PatientDirectoryPage() {
       setLoading(false)
     })
     return () => abort.abort()
-  }, [filters, page, reloadToken])
+  }, [filters, page, query, reloadToken])
 
   const rows = data?.items ?? []
   const total = data?.total ?? 0
@@ -182,6 +187,7 @@ function PatientDirectoryPage() {
   const hasFilters = filters.status !== ALL_STATUSES
     || filters.department !== ALL_DEPARTMENTS
     || filters.visitDate !== ALL_DATES
+    || Boolean(query.trim())
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -244,6 +250,13 @@ function PatientDirectoryPage() {
     setPage(1)
   }
 
+  function clearFilters() {
+    setFilters(DEFAULT_FILTERS)
+    setQuery('')
+    setSelected([])
+    setPage(1)
+  }
+
   function toggleAll() {
     setSelected(allVisibleSelected ? [] : rows.map(row => row.patientId))
   }
@@ -268,11 +281,12 @@ function PatientDirectoryPage() {
           <h1 className="db-directory-title">Patient Directory</h1>
           <p className="db-directory-sub">Manage and view all patient information</p>
         </div>
-        <button type="button" className="db-btn-primary" onClick={() => setAddOpen(true)}>
+        {user?.role === 'nurse' && <button type="button" className="db-btn-primary" onClick={() => { setCreatedMessage(''); setAddOpen(true) }}>
           <span className="db-btn-primary-icon">{PLUS_GLYPH}</span>
           Add Patient
-        </button>
+        </button>}
       </div>
+      {createdMessage && <p role="status" className="db-registration-success">{createdMessage}</p>}
 
       <div className="db-directory-tabs" role="group" aria-label="Patient type filters">
         {DIRECTORY_TABS.map((tab) => {
@@ -295,6 +309,10 @@ function PatientDirectoryPage() {
       </div>
 
       <div className="db-directory-filters">
+        <label className="db-field db-directory-search">
+          <span className="db-field-label">Search patients</span>
+          <input className="db-select" type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(1) }} placeholder="Name, patient code, or MRN" aria-label="Search patients by name, patient code, or MRN" />
+        </label>
         <FilterField label="Department" icon={DEPARTMENT_GLYPH}>
           <select
             className="db-select"
@@ -338,7 +356,7 @@ function PatientDirectoryPage() {
           </select>
         </FilterField>
 
-        <button type="button" className="db-clear-filters" onClick={() => applyFilters(DEFAULT_FILTERS)}>
+        <button type="button" className="db-clear-filters" onClick={clearFilters}>
           {RESET_GLYPH}
           Clear Filters
         </button>
@@ -369,7 +387,7 @@ function PatientDirectoryPage() {
                 : 'Registered patients will appear here once the record service stores them.'}
             </p>
             {hasFilters && (
-              <button type="button" className="db-clear-filters" onClick={() => applyFilters(DEFAULT_FILTERS)}>
+                <button type="button" className="db-clear-filters" onClick={clearFilters}>
                 {RESET_GLYPH}
                 Clear filters
               </button>
@@ -584,27 +602,93 @@ function PatientDirectoryPage() {
 
       <dialog
         ref={addDialogRef}
-        className="db-dialog db-dialog--notice"
+        className="db-dialog db-dialog--registration"
         aria-labelledby={addTitleId}
-        onClose={() => setAddOpen(false)}
+        onClose={() => { setAddOpen(false); window.setTimeout(() => document.querySelector<HTMLButtonElement>('.db-directory-head .db-btn-primary')?.focus(), 0) }}
         onClick={(event) => { if (event.target === addDialogRef.current) setAddOpen(false) }}
       >
         <div className="db-dialog-body">
           <button type="button" className="db-dialog-close" onClick={() => setAddOpen(false)}>
             {CLOSE_GLYPH}<span className="sr-only">Close</span>
           </button>
-          <h2 id={addTitleId}>Patient registration is not available.</h2>
-          <p className="db-dialog-sub">
-            The patient directory reads stored records. Creating a patient needs a registration workflow that this
-            service does not expose.
-          </p>
-          <div className="db-dialog-actions">
-            <button type="button" className="db-dialog-secondary" onClick={() => setAddOpen(false)}>Close</button>
-          </div>
+          <PatientRegistrationForm key={addOpen ? 'open' : 'closed'} titleId={addTitleId} open={addOpen} onCancel={() => setAddOpen(false)} onCreated={patient => {
+            setCreatedMessage('Patient registered. Directory refreshed.')
+            setAddOpen(false); setFilters(DEFAULT_FILTERS); setQuery(patient.patientNumber); setPage(1); setSelected([]); setReloadToken(token => token + 1)
+          }} />
         </div>
       </dialog>
     </div>
   )
+}
+
+const EMPTY_PATIENT: PatientCreate = {
+  patientCode: '', mrn: '', fullName: '', dateOfBirth: '', gender: 'female', religion: '', phone: '', address: '',
+  status: 'outpatient', room: '', unit: '', attendingClinicianId: '',
+}
+
+function PatientRegistrationForm({ titleId, open, onCancel, onCreated }: { titleId: string; open: boolean; onCancel: () => void; onCreated: (patient: Patient) => void }) {
+  const [form, setForm] = useState<PatientCreate>(EMPTY_PATIENT)
+  const [doctors, setDoctors] = useState<{ id: string; displayName: string; specialty: string }[]>([])
+  const [doctorState, setDoctorState] = useState('Loading attending doctors…')
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const key = useRef<string | undefined>(undefined)
+  const formRef = useRef<HTMLFormElement>(null)
+  const firstField = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    api.doctors().then(({ items }) => {
+      if (!live) return
+      setDoctors(items); setDoctorState(items.length ? '' : 'No active doctors are available.')
+    }).catch(reason => { if (live) setDoctorState(reason instanceof Error ? reason.message : 'Could not load doctors.') })
+    return () => { live = false }
+  }, [open])
+  const update = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    key.current = undefined
+    setForm(current => ({ ...current, [event.target.name]: event.target.value }))
+    setFieldErrors(current => { const next = { ...current }; delete next[event.target.name]; return next })
+  }
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError(''); setFieldErrors({}); setPending(true); key.current ??= crypto.randomUUID()
+    try {
+      const patient = await api.patients.create(Object.fromEntries(Object.entries(form).filter(([, value]) => value !== '')) as PatientCreate, key.current)
+      key.current = undefined; onCreated(patient)
+    } catch (reason) {
+      if (reason instanceof ApiError) {
+        const mapped = Object.fromEntries(reason.fieldErrors.map((item: FieldError) => [item.field, item.message]))
+        setFieldErrors(mapped)
+        setError(reason.status === 401 ? 'Your session expired. Sign in again.' : reason.status === 403 ? 'Only nurses can register patients.' : reason.status === 409 ? 'Patient code or MRN already exists. Check the entered values.' : reason.status === 422 ? reason.message || 'Correct the highlighted fields.' : reason.message)
+        const field = Object.keys(mapped)[0]
+        if (field) (formRef.current?.elements.namedItem(field) as HTMLElement | null)?.focus()
+        else firstField.current?.focus()
+      } else { setError(reason instanceof Error ? reason.message : 'Patient could not be registered. Try again.'); firstField.current?.focus() }
+    } finally { setPending(false) }
+  }
+  function cancel() { setForm(EMPTY_PATIENT); key.current = undefined; setError(''); setFieldErrors({}); onCancel() }
+  const field = (name: keyof PatientCreate, label: string, required = false, type = 'text') => <label className="db-registration-field" key={name}>
+    <span>{label}{required ? ' (required)' : ' (optional)'}</span>
+    <input ref={name === 'patientCode' ? firstField : undefined} name={name} type={type} value={String(form[name] ?? '')} onChange={update} required={required} max={type === 'date' ? new Date().toISOString().slice(0, 10) : undefined} aria-invalid={Boolean(fieldErrors[name])} aria-describedby={fieldErrors[name] ? `${name}-error` : undefined} />
+    {fieldErrors[name] && <small id={`${name}-error`} role="alert">{fieldErrors[name]}</small>}
+  </label>
+  return <>
+    <h2 id={titleId}>Register patient</h2>
+    <p className="db-dialog-sub">Required fields are marked. Patient records are saved to the clinical system.</p>
+    <form ref={formRef} className="db-registration-form" onSubmit={submit}>
+      <fieldset className="db-registration-fields" disabled={pending}>
+      {error && <p className="db-registration-error" role="alert" tabIndex={-1}>{error}</p>}
+      {field('patientCode', 'Patient code', true)}{field('mrn', 'MRN', true)}{field('fullName', 'Full name', true)}{field('dateOfBirth', 'Date of birth', true, 'date')}
+      <label className="db-registration-field"><span>Gender (required)</span><select name="gender" value={form.gender} onChange={update} required aria-invalid={Boolean(fieldErrors.gender)}><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select>{fieldErrors.gender && <small role="alert">{fieldErrors.gender}</small>}</label>
+      {field('religion', 'Religion')}{field('phone', 'Phone')}
+      <label className="db-registration-field"><span>Address (optional)</span><textarea name="address" value={form.address} onChange={update} rows={2} aria-invalid={Boolean(fieldErrors.address)} />{fieldErrors.address && <small role="alert">{fieldErrors.address}</small>}</label>
+      <label className="db-registration-field"><span>Status (required)</span><select name="status" value={form.status} onChange={update} required aria-invalid={Boolean(fieldErrors.status)}><option value="inpatient">Inpatient</option><option value="outpatient">Outpatient</option><option value="emergency">Emergency</option><option value="follow_up">Follow-up</option></select>{fieldErrors.status && <small role="alert">{fieldErrors.status}</small>}</label>
+      {field('room', 'Room')}{field('unit', 'Unit', true)}
+      <label className="db-registration-field"><span>Attending doctor (required)</span><select name="attendingClinicianId" value={form.attendingClinicianId} onChange={update} required disabled={!doctors.length} aria-invalid={Boolean(fieldErrors.attendingClinicianId)}><option value="">{doctorState || 'Select a doctor'}</option>{doctors.map(doctor => <option key={doctor.id} value={doctor.id}>{doctor.displayName}{doctor.specialty ? ` · ${doctor.specialty}` : ''}</option>)}</select>{doctorState && <small role="status">{doctorState}</small>}{fieldErrors.attendingClinicianId && <small role="alert">{fieldErrors.attendingClinicianId}</small>}</label>
+      </fieldset>
+      <div className="db-dialog-actions"><button type="button" className="db-dialog-secondary" onClick={cancel} disabled={pending}>Cancel</button><button type="submit" className="db-dialog-primary" disabled={pending || !doctors.length}>{pending ? 'Saving…' : 'Register patient'}</button></div>
+    </form>
+  </>
 }
 
 export { PatientDirectoryPage, Avatar as PatientAvatar }

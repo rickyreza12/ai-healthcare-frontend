@@ -72,15 +72,16 @@ for (const resource of RESOURCE_REGISTRY) {
   )
 }
 
-// Only appointments have proven write routes. Every other resource stays read-only.
+// Appointment writes and nurse-only patient registration have proven routes.
 for (const resource of RESOURCE_REGISTRY) {
   assert.equal(
     isMutable(resource),
-    resource.key === 'appointments',
+    resource.key === 'appointments' || resource.key === 'patients',
     `${resource.key} mutability matches the implemented routes`,
   )
   if (resource.key === 'appointments') continue
   for (const operation of ['create', 'update', 'delete'] as const) {
+    if (resource.key === 'patients' && operation === 'create') continue
     assert.equal(
       resource.operations[operation].available,
       false,
@@ -110,7 +111,7 @@ const patients = findResource('patients')
 assert.ok(patients, 'patients resource is registered')
 assert.equal(patients.serverBacked, true, 'patients read from the feature API')
 assert.equal(patients.operations.read.status, 'implemented', 'patient reads are implemented')
-assert.equal(patients.operations.create.status, 'out-of-scope', 'patient creation stays out of scope')
+assert.equal(patients.operations.create.status, 'implemented', 'patient creation uses the nurse registration API')
 assert.equal(patients.operations.update.status, 'out-of-scope', 'patient editing stays out of scope')
 assert.equal(patients.operations.delete.status, 'out-of-scope', 'patient deletion stays out of scope')
 assert.equal(patients.operations.delete.available, false, 'patient deletion is unavailable')

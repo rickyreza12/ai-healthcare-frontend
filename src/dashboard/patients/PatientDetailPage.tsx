@@ -2,9 +2,13 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, ApiError, type PatientDetail as ApiPatientDetail } from '../../api.ts'
 import { PatientAvatar } from './PatientDirectoryPage.tsx'
-import { QUICK_ACTION_LABELS, SUMMARY_SECTIONS, DETAIL_TABS, type Claim, type DataDomain, type EvidenceRecord, type Overview, type OverviewTab, type QualityMetricTone, type SourceId } from './patientDetailData.ts'
+import { QUICK_ACTION_LABELS, SUMMARY_SECTIONS, DETAIL_TABS, type Claim, type ClinicalAlert, type DataDomain, type EvidenceRecord, type Overview, type OverviewTab, type QualityMetricTone, type SourceId } from './patientDetailData.ts'
 import { buildIdentity, buildOverview, buildSummaryView, statusLabel, type SummaryView } from './patientDetailView.ts'
 import { usePatientSummary } from '../../features/clinicalAi/presentation/patient-summary/usePatientSummary.ts'
+import { ClinicalAiLoader } from '../../features/clinicalAi/presentation/ClinicalAiLoader.tsx'
+import { buildSummaryReportHtml, downloadFile, printReport } from '../../features/clinicalAi/infrastructure/summaryReport.ts'
+import { AlertDialog, ExportDialog, type ExportFormat } from './PatientDetailDialogs.tsx'
+import { AppointmentsPanel, MedicalRecordPanel } from './PatientRecordTabs.tsx'
 import {
   ALL_SOURCES,
   availabilitySplit,
@@ -309,11 +313,12 @@ function OverviewPanel({ overview, onNotice }: OverviewProps) {
   )
 }
 
-function SummaryPanel({ patientId, view, claim, onNotice, onExport, reviewed, onReview, onRefresh, onOpenEvidence, busy }: {
+function SummaryPanel({ patientId, view, claim, onNotice, onAlert, onExport, reviewed, onReview, onRefresh, onOpenEvidence, busy }: {
   patientId: string
   view: OverviewTab
   claim: Claim | undefined
   onNotice: (title: string, text: string) => void
+  onAlert: (alert: ClinicalAlert) => void
   onExport: () => void
   reviewed: boolean
   onReview: () => void
@@ -425,7 +430,7 @@ function SummaryPanel({ patientId, view, claim, onNotice, onExport, reviewed, on
           <ul className="db-pd-alerts" role="list">
             {view.alerts.map((alert) => (
               <li key={alert.title}>
-                <button type="button" className={`db-pd-alert db-pd-alert--${alert.level}`} onClick={() => onNotice(alert.title, alert.description)}>
+                <button type="button" className={`db-pd-alert db-pd-alert--${alert.level}`} onClick={() => onAlert(alert)}>
                   <span className="db-pd-alert-icon" aria-hidden="true">
                     <Icon name={alert.level === 'high' ? 'alert' : alert.level === 'medium' ? 'alert' : 'info'} size={18} />
                   </span>
@@ -830,12 +835,15 @@ function TabUnavailable({ title }: { title: string }) {
     </section>
   )
 }
+
 function PatientDetailPage() {
   const params = useParams()
   const patientId = params.patientId ?? ''
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [alert, setAlert] = useState<ClinicalAlert | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
   const [patient, setPatient] = useState<ApiPatientDetail | null>(null)
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading')
   const [loadError, setLoadError] = useState('')
@@ -930,7 +938,7 @@ function PatientDetailPage() {
   const identity = buildIdentity(patient)
   const overview = buildOverview(patient)
   const aiView = ai.summary ? buildSummaryView(ai.summary) : null
-  const meta = `${identity.age} years � ${identity.gender} � ${identity.religion}`
+  const meta = `${identity.age} years • ${identity.gender} • ${identity.religion}`
 
   const facts = [
     { icon: 'id' as IconName, label: 'Patient ID', value: identity.patientNumber },
@@ -939,14 +947,13 @@ function PatientDetailPage() {
     { icon: 'location' as IconName, label: 'Address', value: identity.address },
   ]
 
-  const exportSummary = () => {
+  const runExport = (format: ExportFormat) => {
     if (!ai.summary) return
-    const url = URL.createObjectURL(new Blob([JSON.stringify(ai.summary, null, 2)], { type: 'application/json' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `ai-summary-${patientId}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
+    const name = `ai-summary-${patient.patientNumber}`
+    if (format === 'json') return downloadFile(JSON.stringify(ai.summary, null, 2), 'application/json', `${name}.json`)
+    const report = buildSummaryReportHtml(patient, ai.summary)
+    if (format === 'pdf') printReport(report)
+    else downloadFile('﻿' + report, 'application/msword', `${name}.doc`)
   }
 
   return (
@@ -1040,13 +1047,34 @@ function PatientDetailPage() {
         </div>
       )}
 
-      {tab === 'ai-summary' && ai.state === 'loading' && (
-        <section className="db-pd-card" aria-busy="true">
-          <p className="db-pd-rail-note">Loading the stored AI summary�</p>
+      {tab === 'ai-summary' && ai.phase !== 'idle' && (
+        <section className="db-pd-card">
+          {ai.phase === 'checking' ? (
+            <ClinicalAiLoader
+              label="Checking for a saved summary"
+              detail="Looking in the database before generating anything."
+              steps={[
+                { label: 'Checking the database for a saved summary', status: 'active' },
+                { label: 'Loading the saved summary, sources, and data quality', status: 'pending' },
+              ]}
+            />
+          ) : (
+            <ClinicalAiLoader
+              label={ai.summary ? 'Refreshing the AI summary' : 'Generating the AI summary'}
+              detail={ai.summary
+                ? "Re-reading this patient's source records with the hosted model."
+                : 'No saved summary was found, so a new one is being created.'}
+              steps={[
+                { label: ai.summary ? 'Saved summary found' : 'No saved summary found', status: 'done' },
+                { label: "Reading this patient's source records and generating the summary", status: 'active' },
+                { label: 'Saving the summary to the database', status: 'pending' },
+              ]}
+            />
+          )}
         </section>
       )}
 
-      {tab === 'ai-summary' && ai.state === 'missing' && !ai.error && (
+      {tab === 'ai-summary' && ai.state === 'missing' && !ai.error && ai.phase === 'idle' && (
         <section className="db-pd-card">
           <div className="db-pd-card-head">
             <span className="db-pd-card-icon" aria-hidden="true"><Icon name="sparkle" size={20} /></span>
@@ -1057,19 +1085,20 @@ function PatientDetailPage() {
           </div>
           <div className="db-detail-actions">
             <button type="button" className="db-pd-quick-btn db-pd-quick-btn--primary" disabled={busy} onClick={() => void ai.generate(null)}>
-              <Icon name="sparkle" size={18} /> {ai.action === 'generating' ? 'Generating�' : 'Generate Summary'}
+              <Icon name="sparkle" size={18} /> Generate Summary
             </button>
           </div>
         </section>
       )}
 
-      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && section === 'summary' && (
+      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && ai.action !== 'generating' && section === 'summary' && (
         <SummaryPanel
           patientId={patientId}
           view={aiView.tab}
           claim={resolveActiveClaim(aiView.claims, null)}
           onNotice={openNotice}
-          onExport={exportSummary}
+          onAlert={setAlert}
+          onExport={() => setExportOpen(true)}
           reviewed={ai.summary.review.reviewed}
           onReview={() => void ai.review(!ai.summary?.review.reviewed)}
           onRefresh={() => void ai.generate(ai.summary?.dataVersion ?? 0)}
@@ -1077,18 +1106,21 @@ function PatientDetailPage() {
           busy={busy}
         />
       )}
-      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && section === 'evidence' && (
+      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && ai.action !== 'generating' && section === 'evidence' && (
         <EvidencePanel patientId={patientId} claims={aiView.claims} records={aiView.evidence} />
       )}
-      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && section === 'data-quality' && (
+      {tab === 'ai-summary' && ai.state === 'ready' && ai.summary && aiView && ai.action !== 'generating' && section === 'data-quality' && (
         <DataQualityPanel view={aiView} onRefresh={() => void ai.refreshQuality()} busy={busy} />
       )}
 
-      {tab === 'medical-record' && <TabUnavailable title="Medical Record" />}
-      {tab === 'appointments' && <TabUnavailable title="Appointments" />}
+      {tab === 'medical-record' && <MedicalRecordPanel patientId={patientId} />}
+      {tab === 'appointments' && <AppointmentsPanel patientId={patientId} />}
       {tab === 'lab-results' && <TabUnavailable title="Lab Results" />}
 
       <NoticeDialog notice={notice} onClose={() => setNotice(null)} />
+      {ai.summary && <AlertDialog alert={alert} summary={ai.summary} onClose={() => setAlert(null)}
+        evidenceHref={sectionHref(patientId, alert && ai.summary.dataQuality.issues.some(i => i.issue === alert.title) ? 'data-quality' : 'evidence')} />}
+      <ExportDialog open={exportOpen} onExport={runExport} onClose={() => setExportOpen(false)} />
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { DIRECTORY_PATIENTS, DIRECTORY_TABS, DIRECTORY_TOTAL, type DirectoryStatus } from './dashboard/patients/patientDirectoryData.ts'
 import {
   DEFAULT_DIRECTORY_FILTERS,
@@ -150,5 +151,18 @@ assert.equal(
   8,
   'every attending clinician has its own supplied portrait',
 )
+
+const directorySource = readFileSync(new URL('./dashboard/patients/PatientDirectoryPage.tsx', import.meta.url), 'utf8')
+const apiSource = readFileSync(new URL('./api.ts', import.meta.url), 'utf8')
+const authSource = readFileSync(new URL('./auth.tsx', import.meta.url), 'utf8')
+assert.ok(directorySource.includes("user?.role === 'nurse'"), 'only nurses see patient creation')
+assert.ok(directorySource.includes('api.patients.list('), 'directory rows load from the backend')
+assert.ok(!directorySource.includes('DIRECTORY_PATIENTS'), 'directory has no local patient fallback')
+assert.ok(directorySource.includes('api.doctors()'), 'doctor options load from the backend')
+assert.ok(directorySource.includes('crypto.randomUUID()'), 'registration creates an idempotency key per submit attempt')
+assert.ok(apiSource.includes("'/api/doctors'") && apiSource.includes("'/api/patients'"), 'registration uses backend endpoints')
+assert.ok(apiSource.includes("'Idempotency-Key': idempotencyKey"), 'patient retries retain the request key')
+assert.ok(authSource.includes("'auth:unauthorized'"), 'authenticated 401 clears session state')
+assert.ok(!authSource.includes('DEV_BYPASS'), 'no frontend login bypass exists')
 
 console.log('patient directory checks passed')

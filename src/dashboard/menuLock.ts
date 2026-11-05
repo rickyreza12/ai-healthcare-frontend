@@ -1,11 +1,11 @@
 import type { MenuConfig } from '../api.ts'
 import { NAV_ITEMS } from './dashboardData.ts'
 
-// shortcut: the fallback opens every menu while lock mode is off; restore a fail-closed fallback before enabling the lock.
+// Doctors and nurses see only these workspaces; the Vite dev server opens every menu.
 export const MENU_FALLBACK: MenuConfig = {
-  lock_enabled: false,
-  allowed_keys: ['patients', 'healthcare-assistant'],
-  default_key: 'patients',
+  lock_enabled: !import.meta.env?.DEV,
+  allowed_keys: ['dashboard', 'patients', 'appointments', 'medical-records', 'healthcare-assistant'],
+  default_key: 'dashboard',
 }
 
 export function isMenuItemLocked(menu: MenuConfig, key: string): boolean {

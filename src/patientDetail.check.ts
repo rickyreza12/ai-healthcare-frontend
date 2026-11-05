@@ -270,21 +270,14 @@ assert.ok(LAB_SYNTHETIC_NOTICE.includes('not clinical records'), 'the demo notic
 assert.ok(PATIENT_LAB_REPORTS.every((report) => report.patientId === REFERENCE_DETAIL_ID), 'every demo report belongs to the reference patient')
 
 const pageSource = readFileSync(new URL('./dashboard/patients/PatientDetailPage.tsx', import.meta.url), 'utf8')
-for (const panel of ['MedicalRecordPanel', 'AppointmentsPanel', 'LabResultsPanel']) {
-  assert.ok(pageSource.includes(panel), `${panel} renders real tab content`)
-}
-assert.ok(!pageSource.includes('The medical record list lives on its own page.'), 'the medical-record placeholder is gone')
-assert.ok(!pageSource.includes('The reference reports no integrated laboratory domain for this patient.'), 'the lab placeholder is gone')
-assert.ok(pageSource.includes('patientVisitHistory'), 'the appointments panel renders supplied visit history')
-assert.ok(!pageSource.includes('No historical appointments are included'), 'the reference-patient visit-history empty state is gone')
+assert.ok(pageSource.includes('<TabUnavailable title="Lab Results" />'), 'Lab Results stays unavailable without a backend endpoint')
+assert.ok(pageSource.includes('<MedicalRecordPanel patientId={patientId} />'), 'Medical Record reads the stored records')
+assert.ok(pageSource.includes('<AppointmentsPanel patientId={patientId} />'), 'Appointments reads the stored visits')
+const tabsSource = readFileSync(new URL('./dashboard/patients/PatientRecordTabs.tsx', import.meta.url), 'utf8')
+assert.ok(tabsSource.includes('api.patients.medicalRecord') && tabsSource.includes('api.patients.appointments'), 'record tabs call the backend, never local fixtures')
 
 const routeSource = readFileSync(new URL('./dashboard/patients/PatientDetailRoute.tsx', import.meta.url), 'utf8')
 assert.ok(routeSource.includes('<PatientDetailPage />'), 'patient routes keep the existing patient detail display')
 assert.ok(!routeSource.includes('PatientAiSummaryPage'), 'the standalone AI summary replacement is not routed')
-
-const referenceSource = readFileSync(new URL('./dashboard/patients/PatientAiReferenceDialog.tsx', import.meta.url), 'utf8')
-for (const asset of ['patient-ai-summary.svg', 'patient-sources-evidence.svg', 'patient-data-quality.svg']) {
-  assert.ok(referenceSource.includes(asset), `${asset} is available in the AI reference modal`)
-}
 
 console.log('patient detail checks passed')

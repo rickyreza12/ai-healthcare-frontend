@@ -1,11 +1,35 @@
-const BASE: string = import.meta.env?.VITE_API_URL ?? 'http://127.0.0.1:8000'
+const BASE: string = import.meta.env?.VITE_API_URL ?? `${typeof window === 'undefined' ? 'http://localhost' : `${window.location.protocol}//${window.location.hostname}`}:8000`
 
-export type User = { id: number; email: string }
+export type User = { id: string; email: string; role: 'doctor' | 'nurse' }
 
 export type MenuConfig = {
   lock_enabled: boolean
   allowed_keys: string[]
   default_key: string
+}
+
+export type MedicalRecord = {
+  diagnoses: { icd10Code: string; description: string; recordedAt: string; clinician: string | null }[]
+  medications: {
+    name: string; dose: string | null; frequency: string | null; indication: string | null
+    status: string; prescribedAt: string; prescriber: string | null
+  }[]
+  allergies: { substance: string; category: string; severity: string | null }[]
+  vitals: {
+    measuredAt: string; bloodPressure: string | null; heartRateBpm: number | null
+    temperatureC: string | null; weightKg: string | null; fetalHeartRateBpm: number | null
+  }[]
+  soapNotes: {
+    recordedAt: string; encounterType: string; clinician: string | null
+    subjective: string | null; objective: string | null; assessment: string | null; plan: string | null
+  }[]
+  labResults: { testName: string; value: string; unit: string | null; resultedAt: string }[]
+  procedures: { name: string; performedAt: string }[]
+}
+
+export type PatientAppointment = {
+  id: string; occurredAt: string; title: string; department: string | null
+  clinician: string | null; clinicianSpecialty: string | null; note: string; state: 'upcoming' | 'completed'
 }
 
 export type DoctorRef = { id: string; displayName: string; specialty: string; avatarUrl?: string | null }
@@ -105,6 +129,12 @@ export type AppointmentInput = {
 export type AppointmentPatch = Partial<Omit<AppointmentInput, 'patientId'>> & { version: number }
 
 export type FieldError = { field: string; code: string; message: string }
+export type DoctorOption = { id: string; displayName: string; specialty: string }
+export type PatientCreate = {
+  patientCode: string; mrn: string; fullName: string; dateOfBirth: string; gender: 'female' | 'male' | 'other'
+  religion?: string; phone?: string; address?: string; status: PatientStatus; room?: string; unit: string
+  attendingClinicianId: string
+}
 
 export class ApiError extends Error {
   status: number
@@ -153,6 +183,7 @@ export async function request<T>(path: string, init: RequestInit & { json?: unkn
           : 'Request failed.'
     const code = typeof problem.code === 'string' ? problem.code : undefined
     const fieldErrors = Array.isArray(problem.fieldErrors) ? (problem.fieldErrors as FieldError[]) : []
+    if (res.status === 401 && path !== '/api/auth/login') window.dispatchEvent(new Event('auth:unauthorized'))
     throw new ApiError(res.status, message, code, fieldErrors)
   }
   return data as T
@@ -164,8 +195,12 @@ export const api = {
     request<User>('/api/auth/login', { method: 'POST', json: { email: email.trim(), password, remember } }),
   logout: () => request<null>('/api/auth/logout', { method: 'POST' }),
   menu: () => request<MenuConfig>('/api/menu'),
+  doctors: () => request<{ items: DoctorOption[] }>('/api/doctors'),
 
   patients: {
+    create: (body: PatientCreate, idempotencyKey: string) => request<Patient>('/api/patients', {
+      method: 'POST', json: body, headers: { 'Idempotency-Key': idempotencyKey },
+    }),
     list: (params: {
       q?: string
       status?: string
@@ -186,6 +221,10 @@ export const api = {
     },
     get: (patientId: string) =>
       request<PatientDetail>(`/api/patients/${encodeURIComponent(patientId)}`),
+    medicalRecord: (patientId: string) =>
+      request<MedicalRecord>(`/api/patients/${encodeURIComponent(patientId)}/medical-record`),
+    appointments: (patientId: string) =>
+      request<{ items: PatientAppointment[] }>(`/api/patients/${encodeURIComponent(patientId)}/appointments`),
   },
 
   appointments: {

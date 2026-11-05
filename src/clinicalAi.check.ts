@@ -5,29 +5,29 @@ import { validateAnswer, validateCatalog, validateExchange } from './features/cl
 import { validateSummary } from './features/clinicalAi/infrastructure/patientSummaryMapper.ts'
 
 const source = {
-  sourceId: 'SYN-BUNDA-V0002-01-SRC', kind: 'emr', title: 'CAS clinical source',
-  recordedOn: '2024-07-16', fields: [{ label: 'Diagnosis code', value: 'Z34.9' }],
+  sourceId: 'SYN-BUNDA-V0002-01-SRC', marker: 'S1', kind: 'emr', title: 'CAS clinical source',
+  recordedAt: '2024-07-16T00:00:00Z', fields: [{ label: 'Diagnosis code', value: 'Z34.9' }],
 }
 
 const validSummary = {
   summaryId: 'SYN-BUNDA-P0002:1:1', dataVersion: 1, patientContextId: 'SYN-BUNDA-P0002',
-  status: 'ready', heading: 'Clinical history summary', body: 'One source encounter.',
+  status: 'ready', heading: 'Clinical history summary', body: 'One source encounter.', model: 'test',
   generatedAt: '2026-10-23T00:00:00Z', sourceNote: 'Approved synthetic records',
   sourceCount: 1, sources: [source], contextCards: [], soapNotes: [], alerts: [],
-  timeline: [{ occurredOn: '2024-07-16', title: 'Visit', clinician: 'Not supplied',
+  timeline: [{ occurredAt: '2024-07-16T00:00:00Z', title: 'Visit', clinician: 'Not supplied',
     note: 'Z34.9 recorded', sourceId: source.sourceId }],
   sourceGroups: [{ label: 'Clinical records', kind: 'emr', count: 1, sourceIds: [source.sourceId] }],
   availability: [],
   claims: [{ claimId: 'C1', number: 1, title: 'Recorded diagnosis',
-    description: 'Z34.9', sourceIds: [source.sourceId] }],
+    description: 'Z34.9', supportStatus: 'supported', sourceIds: [source.sourceId] }],
   review: { reviewed: false, reviewedAt: null, reviewedBy: null },
-  dataQuality: { reliability: { score: 0, scale: 100, label: 'Unassessed', status: 'Unassessed', copy: '' },
+  dataQuality: { assessmentId: 'A1', computedAt: '2026-10-23T00:00:00Z', reliability: { score: 0, scale: 100, label: 'Unassessed', status: 'Unassessed', copy: '' },
     metrics: [], freshness: [], domains: [], issues: [] },
 }
 
 const summary = validateSummary(validSummary)
 assert.equal(summary.patientContextId, 'SYN-BUNDA-P0002')
-assert.equal(resolveSource(summary.sources, source.sourceId)?.recordedOn, '2024-07-16')
+assert.equal(resolveSource(summary.sources, source.sourceId)?.recordedAt, '2024-07-16T00:00:00Z')
 assert.equal(resolveSource(summary.sources, 'another-patient-source'), undefined)
 assert.throws(() => validateSummary({ ...validSummary, sourceCount: 2 }), /source count/)
 assert.throws(() => validateSummary({ ...validSummary, claims: [{ ...validSummary.claims[0], sourceIds: ['foreign'] }] }), /unresolved citation/)
@@ -39,7 +39,7 @@ const citation = {
   dateLabel: '2024-07-16', publisher: 'CAS synthetic dataset', summary: 'Z34.9',
 }
 const exchange = {
-  exchangeId: 'patient:SYN-BUNDA-P0002:1', mode: 'patient', prompt: 'What diagnoses are recorded?',
+  exchangeId: 'patient:SYN-BUNDA-P0002:1', mode: 'patient', prompt: 'What diagnoses are recorded?', createdAt: '2026-10-23T00:00:00Z',
   answer: [{ type: 'excerpts', rows: [{ dateLabel: '2024-07-16', title: 'Visit',
     value: 'Z34.9', sourceId: citation.sourceId }] }], citations: [citation],
 }

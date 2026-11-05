@@ -8,8 +8,11 @@ import {
   navKeyForPath,
 } from './dashboard/menuLock.ts'
 
-// The fallback follows the current unlocked default.
-assert.equal(MENU_FALLBACK.lock_enabled, false)
+// The fallback locks everything except the five supported workspaces outside the dev server.
+assert.equal(MENU_FALLBACK.lock_enabled, !import.meta.env?.DEV)
+assert.deepEqual(MENU_FALLBACK.allowed_keys, ['dashboard', 'patients', 'appointments', 'medical-records', 'healthcare-assistant'])
+assert.equal(defaultMenuRoute({ ...MENU_FALLBACK, lock_enabled: true }), '/dashboard')
+assert.equal(isMenuItemLocked({ ...MENU_FALLBACK, lock_enabled: true }, 'pharmacy'), true)
 
 const locked: MenuConfig = {
   lock_enabled: true,

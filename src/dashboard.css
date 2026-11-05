@@ -456,6 +456,12 @@
   object-fit: cover;
 }
 
+/* The only nurse art is a full-body figure, so crop the view box to the face. */
+.db-topbar-avatar--nurse {
+  object-view-box: inset(0 51% 73% 0);
+  background: #e8f3f1;
+}
+
 .db-topbar-identity {
   display: flex;
   flex: 1;
@@ -2168,6 +2174,9 @@
   box-shadow: 0 1px 3px rgba(16, 54, 89, 0.06);
 }
 
+.db-directory-search { flex-basis: 272px; }
+.db-directory-search input.db-select { padding: 0 12px; cursor: text; }
+
 .db-field {
   display: block;
   flex: 0 1 272px;
@@ -2795,12 +2804,24 @@
   }
 }
 
+.db-dialog--registration { width: min(680px, calc(100vw - 32px)); }
+.db-registration-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 20px; }
+.db-registration-fields { display: contents; }
+.db-registration-field { display: grid; gap: 6px; min-width: 0; color: var(--dashboard-navy); font-size: 13px; font-weight: 600; }
+.db-registration-field input, .db-registration-field select, .db-registration-field textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #cbd6e0; border-radius: 7px; background: white; color: var(--dashboard-body); font: inherit; }
+.db-registration-field textarea { resize: vertical; }
+.db-registration-field input:focus-visible, .db-registration-field select:focus-visible, .db-registration-field textarea:focus-visible { outline: 3px solid rgba(24, 112, 168, .28); outline-offset: 1px; border-color: #1870a8; }
+.db-registration-field small, .db-registration-error { color: #a52828; font-weight: 500; }
+.db-registration-form .db-dialog-actions, .db-registration-error { grid-column: 1 / -1; }
+.db-registration-error { margin: 0; }
+.db-registration-success { margin: 0 0 12px; color: #126a55; font-weight: 600; }
+@media (max-width: 560px) { .db-registration-form { grid-template-columns: minmax(0, 1fr); } }
 @media (min-width: 900px) {
   .db-directory-cards {
     display: none;
   }
 
-  .db-directory-filters .db-field:nth-of-type(3) {
+  .db-directory-filters .db-field:nth-of-type(4) {
     flex-basis: 310px;
   }
 
@@ -9411,3 +9432,14 @@
 .db-pd-summary .db-pd-ai-box { padding: 12px 14px; }
 .db-pd-summary .db-pd-ai-body { font-size: 13px; line-height: 1.5; }
 .db-pd-summary .db-pd-soap-item { gap: 8px; }
+
+/* Initials avatar used when a patient has no photo. */
+.db-dir-avatar--initials {
+  display: inline-grid;
+  place-items: center;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(135deg, #17b8a6, #087c76);
+  box-shadow: 0 2px 8px rgba(8, 124, 118, 0.25);
+}

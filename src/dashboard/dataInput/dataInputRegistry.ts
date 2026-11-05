@@ -165,7 +165,7 @@ export const RESOURCE_REGISTRY: readonly ResourceDefinition[] = [
         available: true,
         evidence: 'GET /api/patients and GET /api/patients/{patientId} are implemented in repo/backend/app/routers/patients.py with tests.',
       },
-      create: outOfScope('Patient creation is out of scope in 03-patients coverage.'),
+      create: { status: 'implemented', available: true, evidence: 'Nurses register patients through POST /api/patients in the Patient Directory; doctor authorization remains server-enforced.' },
       update: outOfScope('Patient editing is out of scope in 03-patients coverage.'),
       delete: outOfScope('The patient specification defines no delete operation.'),
     },
