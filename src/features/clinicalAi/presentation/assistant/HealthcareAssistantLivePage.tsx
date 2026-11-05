@@ -304,11 +304,12 @@ export function HealthcareAssistantLivePage() {
     setPendingPrompt(prompt)
     setDraft('')
     setMessage('Retrieving source-grounded evidence…')
-    const signature = `${mode}|${patientContextId ?? ''}|${prompt}`
+    const contextId = mode === 'patient' ? patientContextId : null
+    const signature = `${mode}|${contextId ?? ''}|${prompt}`
     const key = retry.current?.signature === signature ? retry.current.key : newIdempotencyKey()
     retry.current = { signature, key }
     try {
-      const value = await answerAssistant(repository, mode, prompt, patientContextId, key, abort.signal)
+      const value = await answerAssistant(repository, mode, prompt, contextId, key, abort.signal)
       if (abort.signal.aborted) return
       retry.current = null
       if (value.outcome === 'answered') {
@@ -321,7 +322,8 @@ export function HealthcareAssistantLivePage() {
       }
     } catch (reason) {
       if (!abort.signal.aborted) {
-        const text = errorMessage(reason, 'Unable to answer right now.')
+        const raw = errorMessage(reason, '')
+        const text = !raw || /[a-z][A-Z]/.test(raw) ? 'Something went wrong while answering. Please try again.' : raw
         setMessage(text)
         setFailure({ prompt, text })
       }
@@ -517,7 +519,9 @@ export function HealthcareAssistantLivePage() {
         {failure && <div className="ha-exchange">
           <div className="ha-question-row"><div className="ha-question"><span className="sr-only">You asked: </span>{failure.prompt}</div>
             <img className="ha-avatar" src={doctorAvatar} alt="" width={32} height={32} /></div>
-          <div className="ha-keypoints" role="alert"><h2>Question not answered</h2><p>{failure.text}</p></div>
+          <article className="ha-answer" role="alert" aria-label="Assistant could not answer"><Spark /><div className="ha-answer-body">
+            <p><strong>I couldn't answer that.</strong></p><p className="ha-muted">{failure.text}</p>
+          </div></article>
         </div>}
         </div>
         <div className="ha-prompts" role="group" aria-label="Suggested prompts">

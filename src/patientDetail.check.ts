@@ -41,6 +41,7 @@ import {
   patientAppointments,
   patientLabReports,
   patientVisitHistory,
+  visibleSummarySections,
   resolveActiveClaim,
   reviewedLabel,
   sectionHref,
@@ -66,6 +67,10 @@ assert.equal(parseDetailTab(null), 'overview', 'a missing tab falls back to Over
 assert.equal(parseSummarySection('evidence'), 'evidence', 'a known section value is kept')
 assert.equal(parseSummarySection('nonsense'), 'summary', 'an unknown section falls back to Summary')
 assert.equal(parseSummarySection(undefined), 'summary', 'a missing section falls back to Summary')
+assert.deepEqual(visibleSummarySections('doctor').map((s) => s.key), ['summary', 'evidence'], 'doctors do not see Data Quality')
+assert.deepEqual(visibleSummarySections('nurse').map((s) => s.key), ['summary', 'evidence'], 'nurses do not see Data Quality')
+assert.ok(visibleSummarySections('admin').some((s) => s.key === 'data-quality'), 'admin sees Data Quality')
+assert.equal(parseSummarySection('data-quality', visibleSummarySections('doctor')), 'summary', 'a hidden section falls back to Summary')
 
 assert.equal(detailHref('P-1', 'overview'), '/dashboard/patients/P-1', 'the default tab keeps the clean URL')
 assert.equal(detailHref('P-1', 'ai-summary'), '/dashboard/patients/P-1?tab=ai-summary', 'non-default tabs carry the query')

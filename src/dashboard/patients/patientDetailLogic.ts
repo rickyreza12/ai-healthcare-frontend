@@ -12,6 +12,7 @@ import {
   type EvidenceRecord,
   type HistoryEntry,
   type SourceId,
+  type SummarySection,
   type SummarySectionKey,
 } from './patientDetailData.ts'
 import { PATIENT_LAB_REPORTS, type PatientLabReport } from './patientLabResultData.ts'
@@ -25,9 +26,17 @@ export function parseDetailTab(value: string | null | undefined): DetailTabKey {
   return match ? match.key : DEFAULT_DETAIL_TAB
 }
 
-/** Unknown or missing section values fall back to Summary without an error. */
-export function parseSummarySection(value: string | null | undefined): SummarySectionKey {
-  const match = SUMMARY_SECTIONS.find((section) => section.key === value)
+/** Data Quality is a developer diagnostic: only the admin role sees it; doctors and nurses do not. */
+export function visibleSummarySections(role: string | undefined): readonly SummarySection[] {
+  return SUMMARY_SECTIONS.filter((section) => section.key !== 'data-quality' || role === 'admin')
+}
+
+/** Unknown, missing or not-permitted section values fall back to Summary without an error. */
+export function parseSummarySection(
+  value: string | null | undefined,
+  sections: readonly SummarySection[] = SUMMARY_SECTIONS,
+): SummarySectionKey {
+  const match = sections.find((section) => section.key === value)
   return match ? match.key : DEFAULT_SUMMARY_SECTION
 }
 

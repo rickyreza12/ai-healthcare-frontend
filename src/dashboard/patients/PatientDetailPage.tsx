@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, ApiError, type PatientDetail as ApiPatientDetail } from '../../api.ts'
 import { PatientAvatar } from './PatientDirectoryPage.tsx'
-import { QUICK_ACTION_LABELS, SUMMARY_SECTIONS, DETAIL_TABS, type Claim, type ClinicalAlert, type DataDomain, type EvidenceRecord, type Overview, type OverviewTab, type QualityMetricTone, type SourceId } from './patientDetailData.ts'
+import { useAuth } from '../../auth.tsx'
+import { QUICK_ACTION_LABELS, DETAIL_TABS, type Claim, type ClinicalAlert, type DataDomain, type EvidenceRecord, type Overview, type OverviewTab, type QualityMetricTone, type SourceId } from './patientDetailData.ts'
 import { buildIdentity, buildOverview, buildSummaryView, statusLabel, type SummaryView } from './patientDetailView.ts'
 import { usePatientSummary } from '../../features/clinicalAi/presentation/patient-summary/usePatientSummary.ts'
 import { ClinicalAiLoader } from '../../features/clinicalAi/presentation/ClinicalAiLoader.tsx'
@@ -23,6 +24,7 @@ import {
   resolveActiveClaim,
   reviewedLabel,
   sectionHref,
+  visibleSummarySections,
   type DomainTone,
 } from './patientDetailLogic.ts'
 
@@ -876,7 +878,9 @@ function PatientDetailPage() {
   }, [patientId, reloadToken])
 
   const tab = parseDetailTab(searchParams.get('tab'))
-  const section = parseSummarySection(searchParams.get('section'))
+  const { user } = useAuth()
+  const sections = visibleSummarySections(user?.role)
+  const section = parseSummarySection(searchParams.get('section'), sections)
   const openNotice = (title: string, text: string) => setNotice({ title, text })
   const busy = ai.action !== 'idle'
 
@@ -1021,7 +1025,7 @@ function PatientDetailPage() {
 
       {tab === 'ai-summary' && (
         <nav className="db-pd-subtabs" aria-label="AI summary sections">
-          {SUMMARY_SECTIONS.map((entry) => (
+          {sections.map((entry) => (
             <Link
               key={entry.key}
               to={sectionHref(patientId, entry.key)}
@@ -1119,7 +1123,7 @@ function PatientDetailPage() {
 
       <NoticeDialog notice={notice} onClose={() => setNotice(null)} />
       {ai.summary && <AlertDialog alert={alert} summary={ai.summary} onClose={() => setAlert(null)}
-        evidenceHref={sectionHref(patientId, alert && ai.summary.dataQuality.issues.some(i => i.issue === alert.title) ? 'data-quality' : 'evidence')} />}
+        evidenceHref={sectionHref(patientId, alert && ai.summary.dataQuality.issues.some(i => i.issue === alert.title) && sections.some(s => s.key === 'data-quality') ? 'data-quality' : 'evidence')} />}
       <ExportDialog open={exportOpen} onExport={runExport} onClose={() => setExportOpen(false)} />
     </div>
   )

@@ -131,3 +131,14 @@
 @media (prefers-reduced-motion: reduce) {
   .clinical-page *, .clinical-source-dialog * { animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* Source detail dialog: tight, consistent rhythm; compact close button. */
+.clinical-source-dialog { overflow: hidden; box-shadow: 0 24px 60px rgba(11, 35, 50, .28); }
+.clinical-source-content { padding: 24px 28px 28px; gap: 12px; }
+.clinical-source-heading { align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--clinical-border); }
+.clinical-source-dialog h2 { margin: 0; font-size: 20px; line-height: 1.3; color: #163650; }
+.clinical-source-dialog p { margin: 0; line-height: 1.55; }
+.clinical-source-dialog .clinical-muted { font-size: 12.5px; }
+.clinical-source-dialog .clinical-source-heading button { flex-shrink: 0; min-height: 36px; padding: 6px 14px; border-radius: 8px; background: #f1f6fa; font-size: 13px; font-weight: 600; }
+.clinical-source-dialog .clinical-source-heading button:hover { border-color: var(--clinical-accent); }
+.clinical-source-dialog .clinical-facts { display: grid; gap: 8px; padding: 12px 14px; border-radius: 10px; background: #f4f9f8; font-size: 13px; }
